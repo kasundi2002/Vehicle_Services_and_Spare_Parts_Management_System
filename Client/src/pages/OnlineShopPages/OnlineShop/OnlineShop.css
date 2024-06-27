@@ -1,0 +1,17 @@
+.OnlineShop {
+    background-color: #f5f5f5;
+}
+
+.banner{
+    width: 100vw;
+    height: 600px;
+}
+
+.filter{
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    margin-top: 20px;
+    gap: 10px;
+}

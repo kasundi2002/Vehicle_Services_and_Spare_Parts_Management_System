@@ -1,0 +1,7 @@
+.wrapContent{
+    display: flex;
+    max-width: 79em;
+    width: 100%;
+    margin: 0 auto;
+    padding: 0;
+}

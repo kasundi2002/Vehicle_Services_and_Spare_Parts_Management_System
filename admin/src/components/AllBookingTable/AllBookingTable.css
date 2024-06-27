@@ -1,0 +1,195 @@
+.scroll{
+    overflow: auto;
+    height: 700px;
+    width: auto;
+
+}
+.booking{
+    display: flex;
+    flex-direction: column;
+    max-width: 100%;
+    width: 100%;
+    margin: 0 auto;
+    padding-right: 1em;
+}    
+.tblContainer{
+    height: 100%;
+    margin: 0.2em;
+    padding: 1em;
+    padding-top: 0.2em;
+    border: 1px solid #ccc;
+    background-color: #ffffff;
+    border-radius: 10px;
+
+}
+/* Style for the table */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+    font-family: Arial, sans-serif;
+  }
+    
+  /* Style for table data */
+  td {
+    border: 1px solid #ddd;
+    padding: 7px;
+  }
+  
+  .view{
+    background-color: #005D84;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    cursor: pointer;
+    margin-right: 5px;
+  }
+  /* Style for table actions */
+ .update {
+    background-color: #4caf50;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    cursor: pointer;
+    margin-right: 5px;
+  }
+
+  .delete {
+    background-color: #f44336;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    cursor: pointer;
+    margin-right: 5px;
+  }
+  
+  td button:hover {
+    background-color: #030303;
+  }
+  
+  /* Style for Add Row button */
+  button {
+    background-color: #4caf50;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    cursor: pointer;
+    margin-bottom: 10px;
+  }
+  
+  button:hover {
+    background-color: #45a049;
+  }
+
+  .line-one{
+    display: flex;
+    justify-content: left;
+    margin-bottom: 0.1em;
+  }
+  .gReportbtn{
+    background-color: #005D84;
+    color: white;
+    border: none;
+    width: 10rem;
+    padding: 5px 10px;
+    cursor: pointer;
+    margin-right: 5px;
+    font-weight: bold;
+    margin-left: 37rem;
+  }
+  .myselect{
+    background-color: #0f2c38;
+    color: white;
+    border: none;
+    padding: 5px 5px;
+    cursor: pointer;
+    margin-top: 10px;
+    margin-right: 10px;
+    font-weight: bold;
+    height: 2.5rem;
+    width: 10rem;
+    border-radius: 5px;
+    text-align: center;
+    
+  }
+
+  .bookingList th {
+    background-color: #cfcfcf;
+}
+  
+.bookingList tbody tr:nth-child(even) {
+    background-color: #f2f2f2;
+}
+
+
+
+/* popup details box */
+  
+.poPup {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent background */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.poPup-inner {
+  background-color: #fff;
+  padding: 20px;
+  border-radius: 5px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  width: 400px;
+  font-family: 'Arial', sans-serif;
+  justify-content: center;
+  align-items: center;
+  
+}
+
+.closeBtn {
+  border: 1px solid #000;
+  cursor: pointer;
+  background-color: #ffffff00;
+  font-size: 18px;
+  color: #000;
+}
+
+.updatBtn{
+  color: #ffffff;
+  background-color: #42b82b;
+  font-size: 18px;
+  text-align: center;
+  margin-left: 10px;
+  margin-right: 33px;
+}
+
+.popup h2 {
+  color: #005D84;
+  margin-left: 30%;
+  text-align: center;
+}
+
+.popup p {
+  margin-bottom: 5px;
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  font-size: large;
+}
+
+.updateStatusinput{
+  width: 95%;
+  padding: 10px;
+  margin-bottom: 10px;
+  margin-left: 10px;
+  border-radius: 5px;
+  border: 1px solid #0c0c0c;
+  font-size: 17px;
+}
+/* Customize as needed */
+
+
+  

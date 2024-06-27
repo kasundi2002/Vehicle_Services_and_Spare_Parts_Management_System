@@ -1,0 +1,12 @@
+.title h1{
+    color: #252525;
+    font-size: 50px;
+    font-weight: 500;
+}
+
+.products {
+    margin: 20px 170px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    row-gap: 50px;
+}

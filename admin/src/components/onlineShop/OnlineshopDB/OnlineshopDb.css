@@ -1,0 +1,124 @@
+.onlineshop-section{
+    margin-right: 10px;
+    margin-left: 10px;
+    margin-top: -10px;
+}
+
+.onlineshop-topic{
+    font-family: sans-serif;
+    width: 83.3vw;
+    background-color: #1e1e1e;
+    color: white;
+    padding: 20px;
+    border-radius: 10px 10px 0px 0px;
+}
+
+.order-container{
+    display: flex;
+    justify-content: space-around;
+
+}
+
+.order-head{
+    margin-top: -10px;
+    padding-top: 5px;
+    padding-bottom: 5px;
+    padding-left: 20px;
+    width: 84.3vw;
+    font-size: 25px;
+    background-color: #1e1e1e;
+    color: white;
+    font-family: sans-serif;
+}
+
+.processing{
+    font-family: sans-serif;
+    padding-left: 40px;
+    padding-right: 40px;
+    padding-bottom: 30px;
+    padding-top: 10px;
+    background-color: rgba(9, 45, 250, 0.5);
+    border-radius: 20px;
+    border: solid;
+    border-color: blue;
+    color: white;
+}
+
+.shipped{
+    font-family: sans-serif;
+    padding-left: 40px;
+    padding-right: 40px;
+    padding-bottom: 30px;
+    padding-top: 10px;
+    background-color: rgba(255, 123, 0, 0.582);
+    border-radius: 20px;
+    border: solid;
+    border-color: rgb(255, 123, 0);
+    color: white;
+}
+
+.delivered{
+    font-family: sans-serif;
+    padding-left: 40px;
+    padding-right: 40px;
+    padding-bottom: 30px;
+    padding-top: 10px;
+    background-color: rgba(0, 255, 0, 0.5);
+    border-radius: 20px;
+    border: solid;
+    border-color: green;
+    color: white;
+}
+
+.head{
+    font-size: 20px;
+}
+
+.count{
+    font-size: 50px;
+    padding: 0px;
+    margin: -1px;
+    margin-left: 80px;
+}
+
+.sells-topic{
+    margin-top: 20px;
+    padding-top: 5px;
+    padding-bottom: 5px;
+    padding-left: 20px;
+    width: 34.3vw;
+    font-size: 25px;
+    background-color: #1e1e1e;
+    color: white;
+    font-family: sans-serif;
+}
+
+.sells-container{
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+    height: 350px;
+    overflow-y: auto;
+}
+
+.ss{
+    display: flex;
+    justify-content: space-between;
+}
+
+.chart{
+    width: 50vw;
+}
+
+.overview{
+    margin-top: 20px;
+    padding-top: 5px;
+    padding-bottom: 5px;
+    margin-left: 10px;
+    padding-left: 20px;
+    width: 48.4vw;
+    font-size: 25px;
+    background-color: #1e1e1e;
+    color: white;
+    font-family: sans-serif;
+}

@@ -1,0 +1,13 @@
+.pdf-report{
+    width: 800px;
+    height: 842px;
+    padding: 2rem;
+    background-color: rgb(247, 247, 247);
+    position: relative;
+}
+
+.pdf-header h2{
+    text-align: center;
+    margin-top: 20px;
+    margin-bottom: 20px;
+}

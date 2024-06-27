@@ -1,0 +1,59 @@
+.Navbar{
+    display: flex;
+    width: auto;
+    background-color: #1e1e1e;
+    margin-top: 10px;
+    margin-left: 10px;
+    margin-right: 10px;
+    border-radius: 10px 10px 0px 0px;
+    overflow: hidden;
+}
+
+.NavbarList{
+    display: flex;
+    width: 83.3vw;
+    justify-content: space-around;
+    
+}
+
+.NavbarList li a {
+    width: 200px;
+    height: 30px;
+    text-decoration: none;
+    display: flex;
+    color: white;
+    align-items: center;
+    font-family: 'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande', 'Lucida Sans', Arial, sans-serif;
+    list-style-type: none;
+    border-radius: 10px 10px 0px 0px;
+    padding-top: 5px;
+    padding-bottom: 5px;
+
+}
+
+.NavbarList .Row:hover {
+    cursor: pointer;
+    background-color: #007cb1;
+    border-radius: 10px 10px 0px 0px;
+}
+
+.NavbarList #active {
+    background-color: #007cb1;
+    border-radius: 10px 10px 0px 0px;
+}
+
+#icons {
+    flex:50%;
+    display: grid;
+    place-items: center;
+
+}
+
+#titles {
+    flex:70%;
+}
+
+.System {
+    color: #007cb1;
+    text-align: center;
+}

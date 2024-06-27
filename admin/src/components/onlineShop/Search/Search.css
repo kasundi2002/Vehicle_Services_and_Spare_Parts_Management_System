@@ -1,0 +1,25 @@
+.searchbar{
+    display: flex;
+    height: 50px;
+    justify-content: center;
+    margin: 0px;
+}
+
+.productserch {
+    width: 500px;
+    font-size: 17px;
+    border-radius: 0px;
+    border: none;
+    padding: 10px;
+    height: 50px;
+}
+
+.productbutton{
+    width: 150px;
+    font-size: 17px;
+    border-radius: 0px;
+    background-color: #e14141;
+    height:50px;
+    border: none;
+    color: white;
+}

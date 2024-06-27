@@ -1,0 +1,60 @@
+.slide-container{
+    position: relative;
+}
+
+.image-container {
+    position: relative;
+    width: 100%;
+  }
+  
+  .image-container img {
+    width: 100%;
+    height: auto;
+  }
+
+  .text {
+    position: absolute;
+    background: linear-gradient(to right, rgba(0, 124, 177, 0.7) 0%, rgba(0, 0, 0, 0) 100%);
+    padding-top: 30px;
+    padding-bottom: 30px;
+    padding-left: 20px;
+    padding-right: 100px;
+    bottom: 300px;
+    left: 80px;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .image-container a {
+    color: white;
+    font-size: 40px;
+    text-decoration: none;
+
+  }
+
+  .aditional {
+    color: white;
+    font-size: 20px;
+  }
+
+  .service {
+    position: absolute;
+    top: 240px;
+    right: 70px;
+    z-index: 1;
+  }
+
+  .type {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding-left: 5px;
+    padding-right: 50px;
+    margin: 2px;
+    color: white;
+    background-color: rgba(0, 124, 177, 0.8);
+  }
+
+  .type p {
+    margin-left: 5px;
+  }

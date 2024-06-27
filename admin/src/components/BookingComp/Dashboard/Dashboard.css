@@ -1,0 +1,10 @@
+.wrapContent-dashboard{
+    display: flex;
+    flex-wrap: wrap;
+    max-width: 100%;
+    flex-direction: column;
+    width: 100%;
+    margin: 0 auto;
+    padding: 1em;
+
+}

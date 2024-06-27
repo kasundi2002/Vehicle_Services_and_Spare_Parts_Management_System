@@ -1,0 +1,41 @@
+.BNavBar {
+    width: 100%;
+    background-color: #1d2634;
+    color: rgb(255, 255, 255);
+    border-radius: 5px;
+    font-family: 'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande', 'Lucida Sans', Arial, sans-serif;
+    margin-bottom: 10px;
+}
+
+.BNavBarList {
+    display: flex;
+    justify-content: left;
+    align-items: left;
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+}
+
+.BNavBarList li {
+    padding: 10px;
+    cursor: pointer;
+}
+
+.BNavBarList li:hover {
+    background-color: #555;
+}
+
+#icons {
+    display: inline-block;
+    margin-right: 2px;
+    color: white;
+}
+
+#titles {
+    display: inline-block;
+    color: white;
+}
+
+.BNavBarList #active {
+    background-color: #007cb1;
+}

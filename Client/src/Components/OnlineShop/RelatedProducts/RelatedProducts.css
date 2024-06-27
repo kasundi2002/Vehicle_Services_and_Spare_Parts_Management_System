@@ -1,0 +1,29 @@
+.RelatedProducts{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    height: auto;
+}
+
+.RelatedProducts h1{
+    color: #171717;
+    display: flex;
+    font-size: 50px;
+    font-weight: 400;
+    justify-content: flex-start;
+}
+
+.RelatedProducts hr{
+    width: 1800px;
+    height: 2px;
+    border-radius: 10px;
+    margin-top: -30px;
+    background: #252525;
+}
+
+.RelatedProducts-items{
+    margin-top: 50px;
+    display: flex;
+    gap: 30px;
+}
