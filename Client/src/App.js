@@ -45,10 +45,6 @@ function App() {
           <Route path="/search-results" element={<FilteredProductsPage />} />
           <Route path="/filtered-products" element={<SortedProduct />} />
           <Route path="/checkout" element={<Checkout />} /> 
-          <Route path="/eme" element={<Emegency />} /> 
-          <Route path="/general" element={<GeneralIssue />} /> 
-
-
         </Routes>
         <Footer />
       </div>

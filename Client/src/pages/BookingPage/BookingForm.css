@@ -1,17 +1,19 @@
 /* Form.css */
 
 .form-container {
-  max-width: 47rem;
+  max-width: 60rem; /* Change to your desired max-width */
   margin: 0 auto;
-  padding: 25px;
+  padding: 20px;
+  padding-left: 30rem;
   border: 1px solid #ccc;
   border-radius: 5px;
   background-color: #f5f5f5;
   margin-top: 1rem;
-  box-shadow: 0 5px 15px rgba(0,0,0,.1);
-  background: linear-gradient(135deg, #ffffff 0%, rgb(227, 234, 234) 100%);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, .1);
+  background: linear-gradient(135deg, #92b6d4 0%, rgb(247, 247, 247) 100%);
 }
-label{
+
+label {
   font-size: 1em;
   font-weight: bold;
   color: #4a4a4a;
@@ -19,31 +21,38 @@ label{
 
 .form-columns {
   display: flex;
-  gap: 20px;
+  gap: 100px;
+  margin-right: 50px;
 }
 
 .form-column {
   flex: 1;
+  
 }
 
-input ,textarea,select{
-  width: 25em;
+input, textarea, select {
+  width: 100%; /* Take full width of the container */
   padding: 12px;
   margin-bottom: 20px;
   border: 1px solid #ccc;
   border-radius: 5px;
-  margin-top: 5px;
-  
 }
 
 .bSubmitBTN {
   background-color: #1c92dc;
   color: #fff;
-  width: 10rem;
+  width: 10rem; /* Take full width of the container */
   border: none;
   border-radius: 5px;
   cursor: pointer;
-  justify-content: flex-end; /* Align button to the right */
-  margin-left: auto; /* Push the button to the right */
+  justify-content: right;
+  align-items: right;
+  margin-left: 50rem;
 }
 
+.sideImg{
+  width: 30rem;
+  height: 38rem;
+  position: absolute;
+  margin-left: -30rem;
+}

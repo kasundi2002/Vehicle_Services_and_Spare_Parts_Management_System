@@ -174,7 +174,7 @@ function Table({ openModal }) {
         <div className="poPup">
           <div className="poPup-inner">
            
-            <h2>Update Service Status</h2>
+            <h2>Update Booking Status</h2>
             <select className='updateStatusinput' value={selectedStatus} onChange={handleStatusChange}>
               <option value='accepted'>Accepted</option>
               <option value='pending'>Pending</option>

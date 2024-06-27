@@ -36,10 +36,6 @@ import Userprofile from '../../components/customerComp/Userprofile';
 import Edituser from '../../components/customerComp/Edituser';
 import ViewDetails from '../../components/customerComp/Viewdetails';
 import UpdateCustomerForm from '../../components/customerComp/Updatecustomer';
-import ManageEmployees from '../../components/EmployeeComp/supply/ManageEmployees';
-import EmployeeSalary from '../../components/EmployeeComp/supply/EmpSalary';
-//import ManageSuppliers from '../../components/SupplyComp/supply/ManageSupply'
-//import RequestHistory from '../../components/SupplyComp/supply/RequestSupply';
 
 
 const Admin = () => {
@@ -133,10 +129,6 @@ const Admin = () => {
         <Route path="/customer/edituser" element={<Edituser />} />
         <Route path="/customer/viewdetails/:id" element={<ViewDetails />} />
         <Route path="/customer/updatecustomer/:id" element={<UpdateCustomerForm />} />
-        <Route path="/employee/manage-employees" element={<ManageEmployees />} />
-        <Route path="/employee/emp-salary" element={<EmployeeSalary />} />
-        {/*<Route path="/supplier/manage-suppliers" element={<ManageSuppliers />} />*/}
-        {/*<Route path="/supplier/request-history" element={<RequestHistory />} />  */}
       </Routes>
     </div>
   );

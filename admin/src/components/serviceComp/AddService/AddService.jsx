@@ -5,7 +5,7 @@ import './AddService.css'
 
 function AddService() {
   return (
-    <div className='wrapCont'>
+    <div className='wrapContent-service'>
         <NavBar/>
         <div className='leftRight'>
         <ServiceForm/> 

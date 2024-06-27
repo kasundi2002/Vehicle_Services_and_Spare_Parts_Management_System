@@ -7,6 +7,7 @@ import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
 import PieChart from '../PieChart';
 import axios from 'axios';
 
+
 function DBoardCont() {
     const [bookingCounts, setBookingCounts] = useState({ pending: 0, accepted: 0, completed: 0 });
 
@@ -59,7 +60,13 @@ function DBoardCont() {
                 <div className='chart-container'>
                     <PieChart bookingCounts={bookingCounts} />
                 </div>
+                <div className='Total-Num'>
+                        <h2 className='totbname'>Total Bookings</h2>
+                        <h1 className='totb'>{bookingCounts.pending + bookingCounts.accepted + bookingCounts.completed}</h1>
+                    </div>
             </div>    
+
+       
         </div>
     );
 }

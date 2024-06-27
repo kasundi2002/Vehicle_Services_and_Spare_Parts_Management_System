@@ -147,7 +147,8 @@ const Modal = ({ closeModal, rowData }) => {
           </div>
         </div>
         <div className="button-container">
-          <button type="submit">Update Booking</button>
+          <button type="submit" className='updatBtn2'>Update Booking</button>
+          <button type="button" className='closeBtn2'>Close</button>
           
         </div>
         </form>

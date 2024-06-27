@@ -1,5 +1,5 @@
 import React from 'react'
-import './Service.css'
+import './service.css'
 import ServiceTable from '../../components/serviceComp/ServiceTable/ServiceTable'
 import NavBar from '../../components/serviceComp/NavBar/NavBar'
 import { useState } from 'react'

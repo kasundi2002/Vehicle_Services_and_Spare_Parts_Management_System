@@ -66,3 +66,19 @@ p{
     margin: 0;   
     font-size: 1.5em;
 }
+
+.closeBtn2 {
+  border: 1px solid #000;
+  cursor: pointer;
+  background-color: #ffffff00;
+  font-size: 18px;
+  color: #000;
+  
+}
+
+.updatBtn2{
+  color: #ffffff;
+  background-color: #42b82b;
+  font-size: 18px;
+  margin-left: 30rem;
+}

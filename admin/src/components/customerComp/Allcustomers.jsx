@@ -98,31 +98,25 @@ const Allcustomers = () => {
                             </tr>
                         </thead>
                         <tbody>
-                            {customers
-                                .filter(customer =>
-                                    customer.name && customer.name.toLowerCase().includes(searchTerm.toLowerCase())
-                                )
-                                .map((customer, index) =>
-                                    <tr key={index}>
-                                        <th>{customer.name}</th>
-                                        <td>{customer.NIC}</td>
-                                        <td>{customer.address}</td>
-                                        <td>{customer.email}</td>
-                                        <td>{customer.contactno}</td>
-                                        <td className="d-flex justify-content-around">
-                                            <button className="btn btn-success" onClick={() => handleClicks(customer._id)}>
-                                                <i className="fas fa-eye"></i>
-                                            </button>
-                                            <button className="btn btn-primary" onClick={() => handleClick(customer._id)}>
-                                                <i className="fas fa-edit"></i>
-                                            </button>
-                                            <button className="btn btn-danger" onClick={() => handleDelete(customer._id)}>
-                                                <i className="fas fa-trash"></i>
-                                            </button>
-                                        </td>
-                                    </tr>
-                                )
-                            }
+                        {customers.filter(customer =>
+                        customer.name.toLowerCase().includes(searchTerm.toLowerCase())
+                        ).map((customers, index) =>
+                                <tr key={index}>
+                                    <th>{customers.name}</th>
+                                    <td>{customers.NIC}</td>
+                                    <td>{customers.address}</td>
+                                    <td>{customers.email}</td>
+                                    <td>{customers.contactno}</td>
+                                    <td className="d-flex justify-content-around">
+                                        <button className="btn btn-success" onClick={() => handleClicks(customers._id)}><i class="fas fa-eye"></i></button>
+
+                                        <button className="btn btn-primary" onClick={() => handleClick(customers._id)}><i class="fas fa-edit"></i></button>
+
+                                        <button className="btn btn-danger" onClick={() => handleDelete(customers._id)}><i className="fas fa-trash"></i></button>
+
+
+                                    </td>
+                                </tr>)}
 
                         </tbody>
                     </table>

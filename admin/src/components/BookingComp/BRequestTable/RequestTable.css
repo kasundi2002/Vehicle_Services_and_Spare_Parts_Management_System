@@ -156,7 +156,7 @@ table {
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
+    align-items: center;
     width: 400px;
     font-family: 'Arial', sans-serif;
   }
@@ -167,7 +167,7 @@ table {
     border: none;
     cursor: pointer;
     font-size: 16px;
-    margin-left: 40%;
+  
   }
   .generateQR{
    
@@ -180,10 +180,9 @@ table {
    
   }
   
-  .popup h2 {
+  .popup h1 {
     margin-bottom: 10px;
     color: #005D84;
-    margin-left: 30%;
   }
   
   .popup p {

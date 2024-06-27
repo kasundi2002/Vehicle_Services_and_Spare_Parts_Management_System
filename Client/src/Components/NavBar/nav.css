@@ -1,11 +1,13 @@
 
 .navbar {
-  background-color: rgba(0, 124, 177, 0.95);
+  background-color: rgba(0, 124, 177, 0.85);
   height: 80px;
   width: 100%;
   display: flex;
   justify-content: center;
-  position: relative;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
 }
 
 .navbar-nav {

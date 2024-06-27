@@ -207,8 +207,9 @@ function Table() {
       {qrCodeData && (
         <div className="popup">
           <div className="popup-inner">
-            <h2>QR Code</h2>
+            <h1>QR Code</h1>
             <QRCodeCanvas value={JSON.stringify(qrCodeData)} /> {/* Convert data to string */}
+            <button className="SaveBtn" >Download</button>
             <button className="closeBtn" onClick={() => setQRCodeData(null)}>Close</button>
           </div>
         </div>

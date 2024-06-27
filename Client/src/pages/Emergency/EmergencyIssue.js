@@ -8,7 +8,7 @@ function EmergencyIssue() {
       <div style={styles.overlay}>
         <h1 style={styles.title}> Issues</h1>
         <div style={styles.navbar}>
-          <Link to="/issues/create" style={styles.navLink} className="nav-link">General Issues</Link>
+          <Link to="/general" style={styles.navLink} className="nav-link">General Issues</Link>
           <Link to="/eme" style={styles.navLink} className="nav-link">Emergency Issues</Link>
           {/* Add more links as needed */}
         </div>

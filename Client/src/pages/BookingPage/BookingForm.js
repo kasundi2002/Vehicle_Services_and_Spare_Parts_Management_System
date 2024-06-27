@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import './BookingForm.css'; // Import your CSS file
 import axios from "axios"; // Import Axios for making HTTP requests
+import imageMan from '../../assets/Service/mann.png'
 
 const Form = () => {
   const [formData, setFormData] = useState({
@@ -57,9 +58,10 @@ const Form = () => {
 
   return (
     <div className="form-container">
+      <img className='sideImg' src={imageMan} alt="profile"  />
       <form onSubmit={handleSubmit}>
         <div className="form-columns">
-          <div className="form-column">
+          <div className="form-column1">
             <h3>OWNER DETAILS</h3>
             <label>Name:</label>
             <input
@@ -96,7 +98,7 @@ const Form = () => {
               required
             ></textarea>
           </div>
-          <div className="form-column">
+          <div className="form-column1">
             <h3>VEHICLE DETAILS</h3>
             {/* Location */}
             <div className="form-group">
