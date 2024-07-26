@@ -23,7 +23,7 @@ const ViewDetails = () => {
     const [isEditing, setIsEditing] = useState(false);
 
     useEffect(() => {
-        axios.get(`http://localhost:4000/customers/${id}`).then((res) => {
+        axios.get(`https://vehicle-sever.onrender.com/customers/${id}`).then((res) => {
             setCusData(res.data);
             console.log(res.data);
 

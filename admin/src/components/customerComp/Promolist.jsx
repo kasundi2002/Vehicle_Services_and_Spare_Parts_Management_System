@@ -7,7 +7,7 @@ const PromoList = () => {
     const [customers, setCustomers] = useState([]);
 
     useEffect(() => {
-        axios.get("http://localhost:4000/promotions").then((res) => {
+        axios.get("https://vehicle-sever.onrender.com/promotions").then((res) => {
             setCustomers(res.data);
             console.log(res.data);
         }).catch(() => {

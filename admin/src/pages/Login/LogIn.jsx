@@ -31,7 +31,7 @@ const LoginSignup = () => {
   const login = async () => {
     let responseData;
     try {
-      const response = await fetch('http://localhost:4000/adminlogin', {
+      const response = await fetch('https://vehicle-sever.onrender.com/adminlogin', {
         method: 'POST',
         headers: {
           'Accept': 'application/json',

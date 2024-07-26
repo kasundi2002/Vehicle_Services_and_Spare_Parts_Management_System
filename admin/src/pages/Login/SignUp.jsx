@@ -55,7 +55,7 @@ const AdminSignupForm = () => {
         e.preventDefault();
 
         try {
-            const response = await fetch('http://localhost:4000/adminsignup', {
+            const response = await fetch('https://vehicle-sever.onrender.com/adminsignup', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'

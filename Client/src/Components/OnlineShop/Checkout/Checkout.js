@@ -76,7 +76,7 @@ const Checkout = () => {
             if (confirmed) {
                 const authToken = localStorage.getItem('auth-token');
                 if (authToken) {
-                    const response = await axios.post('http://localhost:4000/checkout', {
+                    const response = await axios.post('https://vehicle-sever.onrender.com/checkout', {
                         ...formData,
                         totalAmount,
                         items,

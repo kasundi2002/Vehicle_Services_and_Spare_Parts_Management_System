@@ -25,7 +25,7 @@ const Userprofile = () => {
 
 
     useEffect(() => {
-        axios.get(`http://localhost:4000/customers/${id}`)
+        axios.get(`https://vehicle-sever.onrender.com/customers/${id}`)
             .then((res) => {
                 setCusData(res.data);
             })
@@ -47,7 +47,7 @@ const Userprofile = () => {
     };
 
     const handleSave = () => {
-        axios.put(`http://localhost:4000/customers/${cusData._id}`, cusData)
+        axios.put(`https://vehicle-sever.onrender.com/customers/${cusData._id}`, cusData)
             .then(() => {
                 setIsEditing(false);
                 alert("Update successful");

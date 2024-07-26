@@ -17,7 +17,7 @@ function Table() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await axios.get('http://localhost:4000/allBookingRequest');
+        const response = await axios.get('https://vehicle-sever.onrender.com/allBookingRequest');
         
         // Filter pending bookings
         const pendingBookings = response.data.filter(row => row.status === 'pending');
@@ -56,7 +56,7 @@ function Table() {
   const handleDeleteRow = async (id) => {
     try {
       // Send a DELETE request to your backend API endpoint
-      await axios.delete(`http://localhost:4000/deleteBookingRequest/${id}`);
+      await axios.delete(`https://vehicle-sever.onrender.com/deleteBookingRequest/${id}`);
   
       // If the request is successful, update the state to remove the deleted row
       setData(data.filter(row => row._id !== id));
@@ -71,7 +71,7 @@ function Table() {
     const handleUpdateStatus = async (id) => {
       try {
         // Send a PUT request to your backend API endpoint to update the status
-        await axios.put(`http://localhost:4000/updateBookingStatus2/${id}`, { status: 'accepted' });
+        await axios.put(`https://vehicle-sever.onrender.com/updateBookingStatus2/${id}`, { status: 'accepted' });
 
         // If the request is successful, update the state to reflect the updated status
         setData(data.map(row => {

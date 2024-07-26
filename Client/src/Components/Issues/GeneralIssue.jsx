@@ -14,7 +14,7 @@ const Home = () => {
   useEffect(() => {
     setLoading(true);
     axios
-      .get('http://localhost:4000/issues')
+      .get('https://vehicle-sever.onrender.com/issues')
       .then((response) => {
         setIssues(response.data.data);
         setLoading(false);

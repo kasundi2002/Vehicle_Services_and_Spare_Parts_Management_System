@@ -17,7 +17,7 @@ const EditIssue = () => {
 
   useEffect(() => {
     setLoading(true);
-    axios.get(`http://localhost:4000/issues/${id}`)
+    axios.get(`https://vehicle-sever.onrender.com/issues/${id}`)
       .then((response) => {
         setcid(response.data.cid);
         setCname(response.data.Cname)
@@ -44,7 +44,7 @@ const EditIssue = () => {
     };
     setLoading(true);
     axios
-      .put(`http://localhost:4000/issues/${id}`, data)
+      .put(`https://vehicle-sever.onrender.com/issues/${id}`, data)
       .then(() => {
         setLoading(false);
         navigate('/issue');

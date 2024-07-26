@@ -29,7 +29,7 @@ const AddService = () => {
     let formData = new FormData();
     formData.append('product', image);
 
-    await fetch('http://localhost:4000/upload', {
+    await fetch('https://vehicle-sever.onrender.com/upload', {
       method: 'POST',
       headers: {
         Accept: 'application/json',
@@ -40,7 +40,7 @@ const AddService = () => {
     if (responseData.success) {
       serviceDet.image = responseData.image_url;
       console.log(serviceDet);
-      await fetch('http://localhost:4000/addservice', {
+      await fetch('https://vehicle-sever.onrender.com/addservice', {
         method: 'POST',
         headers: {
           Accept: 'application/json',

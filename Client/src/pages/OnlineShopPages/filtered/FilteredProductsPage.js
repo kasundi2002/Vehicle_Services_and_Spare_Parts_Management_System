@@ -10,7 +10,7 @@ const FilteredProductsPage = () => {
   const [all_product,setAll_product] = useState([]);
 
     useEffect(()=>{
-        fetch('http://localhost:4000/allproducts')
+        fetch('https://vehicle-sever.onrender.com/allproducts')
         .then((response)=>response.json())
         .then((data)=>setAll_product(data))
      },[])

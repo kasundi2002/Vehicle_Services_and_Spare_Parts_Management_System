@@ -14,7 +14,7 @@ const ProductDisplay = (props) => {
     }, [product.id]); // Run whenever product.id changes
 
     const checkQuantity = () => {
-        fetch(`http://localhost:4000/product/quantity/${product.id}`)
+        fetch(`https://vehicle-sever.onrender.com/product/quantity/${product.id}`)
         .then(response => {
             if (!response.ok) {
                 throw new Error('Network response was not ok');
@@ -30,7 +30,7 @@ const ProductDisplay = (props) => {
     };
 
     const handleAddToCart = () => {
-        fetch(`http://localhost:4000/product/quantity/${product.id}`)
+        fetch(`https://vehicle-sever.onrender.com/product/quantity/${product.id}`)
         .then(response => {
             if (!response.ok) {
                 throw new Error('Network response was not ok');

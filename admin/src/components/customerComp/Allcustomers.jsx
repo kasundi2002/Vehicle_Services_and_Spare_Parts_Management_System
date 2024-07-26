@@ -16,7 +16,7 @@ const Allcustomers = () => {
 
         const fetchCustomers = async () => {
             try {
-                const response = await axios.get("http://localhost:4000/customers");
+                const response = await axios.get("https://vehicle-sever.onrender.com/customers");
                 setCustomers(response.data);
             } catch (error) {
                 console.error("Error fetching customers:", error);
@@ -29,7 +29,7 @@ const Allcustomers = () => {
         const confirmDelete = window.confirm("Are you sure you want to delete this customer?");
         if (confirmDelete) {
             try {
-                await axios.delete(`http://localhost:4000/customers/${id}`);
+                await axios.delete(`https://vehicle-sever.onrender.com/customers/${id}`);
 
                 window.alert("Customer deleted successfully");
             } catch (error) {

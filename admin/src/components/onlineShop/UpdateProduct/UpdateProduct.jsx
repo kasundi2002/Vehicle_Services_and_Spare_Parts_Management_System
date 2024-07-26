@@ -20,7 +20,7 @@ const UpdateProduct = () => {
   useEffect(() => {
     const fetchProduct = async () => {
       try {
-        const response = await fetch(`http://localhost:4000/product/${id}`);
+        const response = await fetch(`https://vehicle-sever.onrender.com/product/${id}`);
         if (response.ok) {
           const data = await response.json();
           if (data.product) {
@@ -58,7 +58,7 @@ const UpdateProduct = () => {
       formData.append('product', image);
 
       try {
-        const uploadResponse = await fetch('http://localhost:4000/upload', {
+        const uploadResponse = await fetch('https://vehicle-sever.onrender.com/upload', {
           method: 'POST',
           body: formData,
         });
@@ -76,7 +76,7 @@ const UpdateProduct = () => {
     }
 
     try {
-      const updateResponse = await fetch(`http://localhost:4000/updateproduct/${id}`, {
+      const updateResponse = await fetch(`https://vehicle-sever.onrender.com/updateproduct/${id}`, {
         method: 'PUT',
         headers: {
           'Accept': 'application/json',

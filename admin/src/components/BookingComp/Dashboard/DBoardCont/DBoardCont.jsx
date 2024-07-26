@@ -13,7 +13,7 @@ function DBoardCont() {
 
     useEffect(() => {
         // Fetch booking data
-        axios.get('http://localhost:4000/allBookingRequest')
+        axios.get('https://vehicle-sever.onrender.com/allBookingRequest')
             .then(response => {
                 const data = response.data;
                 const counts = {

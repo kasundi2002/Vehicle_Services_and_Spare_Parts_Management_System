@@ -59,7 +59,7 @@ function PdfView({ startDate, endDate, dropDownValue }) {
   React.useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await axios.get('http://localhost:4000/allBookingRequest');
+        const response = await axios.get('https://vehicle-sever.onrender.com/allBookingRequest');
         setBookingData(response.data);
       } catch (error) {
         console.error(error);

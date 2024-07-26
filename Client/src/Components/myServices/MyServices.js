@@ -10,7 +10,7 @@ function MyServices() {
     const fetchServices = async () => {
       try {
         // Make a GET request to your backend server to fetch the services data
-        const response = await axios.get('http://localhost:4000/allServices');
+        const response = await axios.get('https://vehicle-sever.onrender.com/allServices');
         // Update the services state with the fetched data
         setServices(response.data);
       } catch (error) {

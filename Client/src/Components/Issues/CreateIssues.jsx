@@ -88,7 +88,7 @@ const CreateIssues = () => {
 
     setLoading(true);
     axios
-      .post('http://localhost:4000/issues', data)
+      .post('https://vehicle-sever.onrender.com/issues', data)
       .then(() => {
         setLoading(false);
         navigate('/issue');

@@ -12,7 +12,7 @@ const DeleteIssue = () => {
   const handleDeleteIssue = () => {
     setLoading(true);
     axios
-      .delete(`http://localhost:4000/issues/${id}`)
+      .delete(`https://vehicle-sever.onrender.com/issues/${id}`)
       .then(() => {
         setLoading(false);
         navigate('/issue');

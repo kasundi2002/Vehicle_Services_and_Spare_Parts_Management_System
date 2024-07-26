@@ -12,7 +12,7 @@ const ShowIssue = () => {
   useEffect(() => {
     setLoading(true);
     axios
-      .get(`http://localhost:4000/issues/${id}`)
+      .get(`https://vehicle-sever.onrender.com/issues/${id}`)
       .then((response) => {
         setIssue(response.data);
         setLoading(false);

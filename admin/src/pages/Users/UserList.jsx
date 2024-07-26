@@ -8,7 +8,7 @@ const UserList = () => {
     const [allUsers, setAllUsers] = useState([]);
 
     useEffect(() => {
-        fetch('http://localhost:4000/allusers')
+        fetch('https://vehicle-sever.onrender.com/allusers')
             .then((res) => res.json())
             .then((data) => {
                 setAllUsers(data);
@@ -19,7 +19,7 @@ const UserList = () => {
         const confirmDelete = window.confirm("Are you sure you want to delete this user?");
         if (confirmDelete) {
             try {
-                await axios.delete(`http://localhost:4000/users/${id}`);
+                await axios.delete(`https://vehicle-sever.onrender.com/users/${id}`);
 
                 window.alert("user deleted successfully");
             } catch (error) {

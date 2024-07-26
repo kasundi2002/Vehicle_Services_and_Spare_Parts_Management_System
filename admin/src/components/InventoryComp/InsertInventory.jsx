@@ -67,7 +67,7 @@ export default function InsertInventory() {
         }
 
         try {
-            const res = await fetch("http://localhost:4000/insertinventory", {
+            const res = await fetch("https://vehicle-sever.onrender.com/insertinventory", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json"

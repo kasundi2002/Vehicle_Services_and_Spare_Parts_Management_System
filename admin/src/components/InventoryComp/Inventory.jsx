@@ -30,7 +30,7 @@ export default function Inventory() {
 
     const getInventory = async () => {
         try {
-            const res = await fetch("http://localhost:4000/inventory", {
+            const res = await fetch("https://vehicle-sever.onrender.com/inventory", {
                 method: "GET",
                 headers: {
                     "Content-Type": "application/json"
@@ -55,7 +55,7 @@ export default function Inventory() {
 
     const deleteInventory = async (id) => {
         try {
-            const response = await fetch(`http://localhost:4000/deleteinventory/${id}`, {
+            const response = await fetch(`https://vehicle-sever.onrender.com/deleteinventory/${id}`, {
                 method: "DELETE",
                 headers: {
                     "Content-Type": "application/json"
@@ -174,7 +174,7 @@ export default function Inventory() {
     // Function to handle sending email
     const handleSendEmail = async () => {
         try {
-            const response = await fetch("http://localhost:4000/sendmail", {
+            const response = await fetch("https://vehicle-sever.onrender.com/sendmail", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json"

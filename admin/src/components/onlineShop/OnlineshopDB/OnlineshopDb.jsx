@@ -14,21 +14,21 @@ const OnlineshopDb = () => {
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const processingResponse = await axios.get('http://localhost:4000/processingOrders');
+                const processingResponse = await axios.get('https://vehicle-sever.onrender.com/processingOrders');
                 if (processingResponse.data.success) {
                     setProcessingCount(processingResponse.data.processingOrdersCount);
                 } else {
                     console.error('Failed to fetch processing orders count');
                 }
 
-                const shippedResponse = await axios.get('http://localhost:4000/shippedOrders');
+                const shippedResponse = await axios.get('https://vehicle-sever.onrender.com/shippedOrders');
                 if (shippedResponse.data.success) {
                     setShippedCount(shippedResponse.data.shippedOrdersCount);
                 } else {
                     console.error('Failed to fetch shipped orders count');
                 }
 
-                const deliveredResponse = await axios.get('http://localhost:4000/deliveredOrders');
+                const deliveredResponse = await axios.get('https://vehicle-sever.onrender.com/deliveredOrders');
                 if (deliveredResponse.data.success) {
                     setDeliveredCount(deliveredResponse.data.deliveredOrdersCount);
                 } else {
@@ -44,7 +44,7 @@ const OnlineshopDb = () => {
 
     const fetchTotalAmount = async () => {
         try {
-            const response = await axios.get('http://localhost:4000/totalAmountOfOrders');
+            const response = await axios.get('https://vehicle-sever.onrender.com/totalAmountOfOrders');
             const { totalAmountOfOrders } = response.data;
             setTotalAmount(totalAmountOfOrders);
         } catch (error) {
@@ -56,7 +56,7 @@ const OnlineshopDb = () => {
 
     const fetchTotalDeliveredAmount = async () => {
         try {
-            const response = await axios.get('http://localhost:4000/totalAmountOfDelivered');
+            const response = await axios.get('https://vehicle-sever.onrender.com/totalAmountOfDelivered');
             const { totalAmountOfDeliveredOrders } = response.data;
             setTotalDeliveredAmount(totalAmountOfDeliveredOrders);
         } catch (error) {
@@ -68,7 +68,7 @@ const OnlineshopDb = () => {
 
     const fetchTotalPendingAmount = async () => {
         try {
-            const response = await axios.get('http://localhost:4000/totalAmountOfPending');
+            const response = await axios.get('https://vehicle-sever.onrender.com/totalAmountOfPending');
             const { totalAmountOfPending } = response.data;
             setTotalPendingAmount(totalAmountOfPending);
         } catch (error) {

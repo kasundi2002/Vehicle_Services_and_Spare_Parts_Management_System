@@ -22,7 +22,7 @@ export default function UpdateInventory() {
 
     const getInventory = async () => {
         try {
-            const res = await fetch(`http://localhost:4000/inventory/${id}`, {
+            const res = await fetch(`https://vehicle-sever.onrender.com/inventory/${id}`, {
                 method: "GET",
                 headers: {
                     "Content-Type": "application/json"
@@ -59,7 +59,7 @@ export default function UpdateInventory() {
         setError("");
 
         try {
-            const response = await fetch(`http://localhost:4000/updateinventory/${id}`, {
+            const response = await fetch(`https://vehicle-sever.onrender.com/updateinventory/${id}`, {
                 method: "PUT",
                 headers: {
                     "Content-Type": "application/json"

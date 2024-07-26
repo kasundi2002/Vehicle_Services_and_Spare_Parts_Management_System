@@ -29,7 +29,7 @@ function OrderList() {
 
     const fetchOrders = async () => {
         try {
-            const response = await fetch('http://localhost:4000/orders');
+            const response = await fetch('https://vehicle-sever.onrender.com/orders');
             if (!response.ok) {
                 throw new Error('Failed to fetch orders');
             }
@@ -71,7 +71,7 @@ function OrderList() {
 
     const handleDeleteOrder = async (orderId) => {
         try {
-            const response = await fetch(`http://localhost:4000/order/${orderId}`, {
+            const response = await fetch(`https://vehicle-sever.onrender.com/order/${orderId}`, {
                 method: 'DELETE',
             });
             if (!response.ok) {
@@ -90,7 +90,7 @@ function OrderList() {
 
     const handleUpdateStatus = async () => {
         try {
-            const response = await fetch(`http://localhost:4000/order/${selectedOrderId}`, {
+            const response = await fetch(`https://vehicle-sever.onrender.com/order/${selectedOrderId}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',

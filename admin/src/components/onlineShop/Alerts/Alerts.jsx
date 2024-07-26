@@ -9,7 +9,7 @@ const Alerts = () => {
 
   useEffect(() => {
     // Fetch low stock products
-    axios.get('http://localhost:4000/lowStockProducts')
+    axios.get('https://vehicle-sever.onrender.com/lowStockProducts')
       .then(response => {
         const { products, lowStockProducts } = response.data;
         setLowStockProducts(lowStockProducts);
@@ -22,7 +22,7 @@ const Alerts = () => {
       });
 
     // Fetch processing orders count
-    axios.get('http://localhost:4000/processingOrdersCount')
+    axios.get('https://vehicle-sever.onrender.com/processingOrdersCount')
       .then(response => {
         const { processingOrdersCount } = response.data;
         setProcessingCount(processingOrdersCount);

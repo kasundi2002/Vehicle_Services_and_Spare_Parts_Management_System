@@ -24,7 +24,7 @@ const ProductList = () => {
 
     
     useEffect(() => {
-        fetch('http://localhost:4000/allproducts')
+        fetch('https://vehicle-sever.onrender.com/allproducts')
             .then((res) => res.json())
             .then((data) => {
                 setAllProducts(data);
@@ -68,7 +68,7 @@ const ProductList = () => {
 
     const remove_product = async (id) => {
         try {
-            const response = await fetch('http://localhost:4000/removeproduct', {
+            const response = await fetch('https://vehicle-sever.onrender.com/removeproduct', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

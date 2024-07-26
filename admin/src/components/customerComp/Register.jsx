@@ -29,7 +29,7 @@ const Register = () => {
     const handlesubmit = async (e) => {
         e.preventDefault();
         try {
-            await axios.post("http://localhost:4000/customers", customerData).then(() => {
+            await axios.post("https://vehicle-sever.onrender.com/customers", customerData).then(() => {
                 setCustomerData({
                     name: "",
                     NIC: "",

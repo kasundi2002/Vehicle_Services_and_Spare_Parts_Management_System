@@ -36,7 +36,7 @@ const Form = () => {
     
     try {
       // Send form data to backend server
-      await axios.post("http://localhost:4000/addbooking", formData);
+      await axios.post("https://vehicle-sever.onrender.com/addbooking", formData);
       alert("Booking submitted successfully!");
       // Optionally, reset the form after submission
       setFormData({

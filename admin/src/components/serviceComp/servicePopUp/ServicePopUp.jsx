@@ -31,7 +31,7 @@ const updateService = ({ service, closePop }) => {
     const handleSubmit = async () => {
         try {
             // Update service details on the backend
-            await axios.put(`http://localhost:4000/updateService/${editedService._id}`, editedService);
+            await axios.put(`https://vehicle-sever.onrender.com/updateService/${editedService._id}`, editedService);
             closePop(null); // Close the popup
             window.location.reload(); // Reload the page to reflect changes
         } catch (error) {

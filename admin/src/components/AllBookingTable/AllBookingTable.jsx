@@ -15,7 +15,7 @@ function Table({ openModal }) {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await axios.get('http://localhost:4000/allBookingRequest');
+        const response = await axios.get('https://vehicle-sever.onrender.com/allBookingRequest');
         const acceptedData = response.data.filter(row => row.status !== 'pending');
         setData(acceptedData); // Set data to filtered data
         setFilteredData(acceptedData);
@@ -55,7 +55,7 @@ function Table({ openModal }) {
 
   const handleDeleteRow = async (id) => {
     try {
-      await axios.delete(`http://localhost:4000/deleteBookingRequest/${id}`);
+      await axios.delete(`https://vehicle-sever.onrender.com/deleteBookingRequest/${id}`);
       // If deletion is successful, refetch data to update the table
       fetchData();
     } catch (error) {
@@ -95,7 +95,7 @@ function Table({ openModal }) {
 
   const handleUpdateStatus = async () => {
     try {
-      await axios.put(`http://localhost:4000/updateBookingStatus2/${selectedBooking._id}`, { status: selectedStatus });
+      await axios.put(`https://vehicle-sever.onrender.com/updateBookingStatus2/${selectedBooking._id}`, { status: selectedStatus });
   
       // Update the status in the local state
       const updatedData = data.map(row => {

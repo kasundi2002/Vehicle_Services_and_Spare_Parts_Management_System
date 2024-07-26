@@ -10,8 +10,9 @@ const ServiceTable = () => {
     useEffect(() => {
         const fetchServices = async () => {
             try {
-                const response = await axios.get("http://localhost:4000/allServices");
+                const response = await axios.get("https://vehicle-sever.onrender.com/allServices");
                 setServices(response.data);
+              
             } catch (error) {
                 console.error("Error fetching services:", error);
             }
@@ -22,7 +23,7 @@ const ServiceTable = () => {
 
     const handleDelete = async (id) => {
         try {
-            await axios.delete(`http://localhost:4000/deleteServices/${id}`);
+            await axios.delete(`https://vehicle-sever.onrender.com/deleteServices/${id}`);
             setServices(services.filter(service => service._id !== id));
             console.log("Service deleted successfully");
         } catch (error) {
@@ -31,6 +32,7 @@ const ServiceTable = () => {
     };
 
     const handleEdit = (service) => {
+        console.log(service);
         setSelectedService(service);
         openPop(service);
     };

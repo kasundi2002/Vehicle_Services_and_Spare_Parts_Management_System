@@ -33,7 +33,7 @@ const Modal = ({ closeModal, rowData }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await axios.put(`http://localhost:4000/updateBookingDetails/${formData._id}`, formData);
+      const response = await axios.put(`https://vehicle-sever.onrender.com/updateBookingDetails/${formData._id}`, formData);
       console.log(response.data); // Handle success response
       // Close the modal or show a success message
       alert('Booking updated successfully');
