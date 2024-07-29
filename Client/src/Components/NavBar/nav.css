@@ -33,21 +33,24 @@
 }
 
 #book {
-  background-color: #e14141;
+  background-color: #cd0d0d;
   padding-top: 14px;
   padding-bottom: 14px;
+  border-radius: 10px;
 }
 
 #shop {
-  background-color: #e14141;
+  background-color: #cd0d0d;
   padding-top: 14px;
   padding-bottom: 14px;
+  border-radius: 10px;
 }
 
 #emergency {
-  background-color: #e14141;
+  background-color: #cd0d0d;
   padding-top: 14px;
   padding-bottom: 14px;
+  border-radius: 10px;
 }
   
 

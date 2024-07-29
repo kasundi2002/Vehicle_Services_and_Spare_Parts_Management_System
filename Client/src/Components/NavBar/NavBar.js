@@ -35,7 +35,7 @@ const NavBar = () => {
         </li>
         <li className="nav-item" id="book">
           <Link to="/booking" className="nav-link">
-            BOOK NOW
+            <b>BOOK NOW</b>
           </Link>
         </li>
         {/*<li className="nav-item" id="book">
@@ -45,12 +45,12 @@ const NavBar = () => {
   </li>*/}
         <li className="nav-item" id="shop">
           <Link to="/onlineShop" className="nav-link">
-            SHOP NOW
+            <b>SHOP NOW</b>
           </Link>
         </li>
         <li className="nav-item" id="emergency">
           <Link to="/emergency" className="nav-link">
-            EMERGENCY
+            <b>EMERGENCY</b>
           </Link>
         </li>
       </ul>
