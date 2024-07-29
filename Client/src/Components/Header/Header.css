@@ -45,7 +45,7 @@
     margin-left: -45px;
     border-radius: 11px;
     font-size: 14px;
-    background-color: #e14141;
+    background-color: #cd0d0d;
     color: white;
 }
 
@@ -54,17 +54,19 @@
     height: 40px;
     margin-right: 20px;
     color: white;
-    background-color: #e14141;
+    background-color: transparent;
+    color: #cd0d0d;
+    border-color: #cd0d0d;
     font-size: 16px;
     border-radius: 5px;
-    border: 2px solid transparent;
+    border: 2px solid ;
 
 }
 
 .login_btn:hover{
-    color: #e14141;
-    border-color: #e14141;
-    background-color: transparent;
+    color: #fffefe;
+    border-color: #cd0d0d;
+    background-color: #cd0d0d;
 }
 
 .pd {
