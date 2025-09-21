@@ -1,4 +1,3 @@
-const port = 4000;
 const express = require("express");
 const app = express();
 const mongoose = require("mongoose");
@@ -16,8 +15,10 @@ var nodemailer = require('nodemailer');
 app.use(express.json());
 app.use(cors());
 
-// Database Connection With MongoDB
-mongoose.connect("mongodb+srv://vehicleitp:16873Myno@test.fw5mj0t.mongodb.net/itpdb");
+// MongoDB Connection - Mongo uri exposure vulnerability fixed by Kasundi
+mongoose.connect(process.env.MONGO_URI)
+.then(() => console.log("MongoDB Connected"))
+.catch((err) => console.error("MongoDB Connection Error:", err));
 
 //API Creation
 
@@ -45,56 +46,6 @@ app.post("/upload",upload.single('product'),(req,res)=>{
         image_url:`http://localhost:${port}/images/${req.file.filename}`
     })
 })
-
-//Schema for Creating Products
-
-/*const Product = mongoose.model("Product",{
-    id:{
-        type: Number,
-        required:true,
-    },
-    name:{
-        type:String,
-        required:true,
-
-    },
-    category:{
-        type:String,
-        required:true,
-    },
-    brand:{
-        type:String,
-        required:true,
-    },
-    new_price:{
-        type:Number,
-        required:true,
-    },
-    old_price:{
-        type:Number,
-        required:true,
-    },
-    description:{
-        type:String,
-        required:true,
-    },
-    quantity:{
-        type:Number,
-        required:true,
-    },
-    image:{
-        type:String,
-        required:true,
-    },
-    date:{
-        type:Date,
-        default:Date.now,
-    },
-    available:{
-        type:Boolean,
-        default:true,
-    }
-})*/
 
 app.post('/addproduct', async (req,res)=>{
     try {
@@ -153,9 +104,9 @@ app.get('/allproducts',async (req, res)=>{
 
 app.listen(port,(error)=>{
     if(!error){
-        console.log("Server Running on Port " + port)
+        console.log("Server Running on Port " + process.env.PORT)
     }else{
-        console.log("Error : " + errror)
+        console.log("Error : " + error)
     }
 })
 
@@ -244,26 +195,6 @@ app.get('/processingOrdersCount', async (req, res) => {
     }
 });
 
-/*const Users = mongoose.model('Users',{
-    name:{
-        type:String,
-    },
-    email:{
-        type:String,
-        unique:true,
-    },
-    password:{
-        type:String,
-    },
-    cartData:{
-        type:Object,   
-    },
-    date:{
-        type:Date,
-        default:Date.now,
-    }
-})*/
-
 app.post('/signup',async (req,res) =>{
 
     let check = await Users.findOne({email:req.body.email});
@@ -290,7 +221,7 @@ app.post('/signup',async (req,res) =>{
         }
     }
 
-    const token = jwt.sign(data, 'secret_ecom');
+    const token = jwt.sign(data, process.env.JWT_SECRET);
     res.json({success:true,token})
 })
 
@@ -346,15 +277,16 @@ app.post('/login', async (req,res) => {
                     id: user.id
                 }
             }
-            const token = jwt.sign(data, 'secret_ecom');
+            const token = jwt.sign(data, process.env.JWT_SECRET);
             res.json({success:true,token});
         }
+
         else{
-            res.json({success:false,errors:"wrong Password"});
+            res.json({success:false,errors:"Invalid credentials"});
         }
     }
     else{
-        res.json({success:false,errors:"wrong Email Id"})
+        res.json({success:false,errors:"Invalid credentials"})
     }
 })
 
@@ -371,15 +303,15 @@ app.post('/adminlogin', async (req,res) => {
                     role: Admin.role,
                 }
             };
-            const token = jwt.sign(data, 'secret_ecom');
+            const token = jwt.sign(data, process.env.JWT_SECRET);
             res.json({success:true,token});
         }
         else{
-            res.json({success:false,errors:"wrong Password"});
+            res.json({success:false,errors:"Invalid credentials"});
         }
     }
     else{
-        res.json({success:false,errors:"wrong Email Id"})
+        res.json({success:false,errors:"Invalid credentials"})
     }
 })
 
@@ -390,6 +322,7 @@ app.get('/newcollections', async (req,res) =>{
     res.send(newcollection);
 })
 
+// jwt secret exposure vulnerability was fixed by kasundi
 const fetchUser = async (req,res,next)=>{
     const token = req.header('auth-token');
     if(!token){
@@ -397,7 +330,7 @@ const fetchUser = async (req,res,next)=>{
     }
     else{
         try{
-            const data = jwt.verify(token, 'secret_ecom');
+            const data = jwt.verify(token,process.env.JWT_SECRET);
             req.user = data.user;
             next();
         } catch(error){
@@ -512,57 +445,13 @@ const clearCart = async (userId) => {
     }
 };
 
-
-// Import necessary modules
-/*const Order = mongoose.model("Order", {
-    orderId: {
-        type: String,
-        required: true,
-    },
-    fullName: {
-        type: String,
-        required: true,
-    },
-    email: {
-        type: String,
-        required: true,
-    },
-    address: {
-        type: String,
-        required: true,
-    },
-    contact: {
-        type: String,
-        required: true,
-    },
-    paymentMethod: {
-        type: String,
-        required: true,
-    },
-    items: {
-        type: Array,
-        required: true,
-    },
-    totalAmount: {
-        type: Number,
-        required: true,
-    },
-    orderDate: {
-        type: Date,
-        default: Date.now,
-    },
-    status: {
-        type: String,
-        default: "processing",
-    },
-});*/
-
+// email and password exposure vulnerability was fixed by kasundi
 // Create a transporter using SMTP transport
 const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
-        user: 'pprajeshvara@gmail.com',
-        pass: 'wjjm bzhn lxkp ennh'
+        user: process.env.EMAIL_ADD, 
+        pass: process.env.EMAIL_PW
     }
 });
 
@@ -589,7 +478,7 @@ app.post('/checkout',fetchUser, async (req, res) => {
         const userId = req.user.id;
 
         await clearCart(userId);
-
+        
         const mailOptions = {
             from: 'pprajeshvara@gmail.com',
             to: email,
@@ -862,23 +751,20 @@ app.put('/updateBookingStatus2/:id', async (req, res) => {
         }
         }); 
     
-        //get all booking details
-        app.get('/allBookingRequest', async (req, res) => {
-            try {
-              const data = await Booking.find();
-              res.json(data);
-              console.log("All Booking Requests Fetched");
+    //get all booking details
+    app.get('/allBookingRequest', async (req, res) => {
+        try {
+            const data = await Booking.find();
+            res.json(data);
+            console.log("All Booking Requests Fetched");
+    
+        } catch (error) {
+            console.error(error);
+            res.status(500).json({ message: 'Server error' });
+        }
+        }
+    );  
         
-            } catch (error) {
-              console.error(error);
-              res.status(500).json({ message: 'Server error' });
-            }
-          }
-        );
-
-        
-        
-
     //pathum's Service Routes
 
 const Service = require('./models/ServiceModel');
