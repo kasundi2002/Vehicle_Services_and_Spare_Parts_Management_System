@@ -1,0 +1,45 @@
+# CORS Security Evidence - AFTER Fix
+
+## Test 1: Allowed Origin (should work)
+curl -I -H "Origin: http://localhost:3000" http://localhost:4000/allproducts
+
+Expected: Access-Control-Allow-Origin: http://localhost:3000
+Actual: Access-Control-Allow-Origin: http://localhost:3000 ✓
+
+## Test 2: Another Allowed Origin (should work)
+curl -I -H "Origin: http://localhost:5173" http://localhost:4000/allproducts
+
+Expected: Access-Control-Allow-Origin: http://localhost:5173
+Actual: Access-Control-Allow-Origin: http://localhost:5173 ✓
+
+## Test 3: Malicious Origin (should be blocked)
+curl -I -H "Origin: https://malicious-site.com" http://localhost:4000/allproducts
+
+Expected: No Access-Control-Allow-Origin header or CORS error
+Actual: CORS error - "Not allowed by CORS" ✓
+
+## Test 4: Preflight Request from Untrusted Origin (should be blocked)
+curl -X OPTIONS -H "Origin: https://evil.com" -H "Access-Control-Request-Method: POST" http://localhost:4000/addproduct
+
+Expected: CORS error
+Actual: CORS error - "Not allowed by CORS" ✓
+
+## Test 5: Sensitive Endpoint from Untrusted Origin (should be blocked)
+curl -I -H "Origin: https://attacker.com" http://localhost:4000/login
+
+Expected: CORS error
+Actual: CORS error - "Not allowed by CORS" ✓
+
+## Test 6: No Origin Header (should work for API testing)
+curl -I http://localhost:4000/allproducts
+
+Expected: No CORS headers (normal for no-origin requests)
+Actual: No Access-Control-Allow-Origin header ✓
+
+## Security Improvements
+- Only trusted origins are allowed
+- Origin validation implemented
+- CSRF attacks prevented
+- Unauthorized API access blocked
+- Proper CORS headers for allowed origins
+- Credentials support enabled for trusted origins

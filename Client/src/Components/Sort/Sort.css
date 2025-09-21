@@ -1,0 +1,29 @@
+.FilterProduct{
+    position: absolute;
+    background-color: white;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 1px 4px 4px 4px rgba(0, 0, 0, 0.15);
+}
+
+.category-select{
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 10px;
+}
+
+.brand-select{
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.Filter{
+    background-color: #e14141;
+    width: 200px;
+    font-size: 20px;
+    
+}

@@ -1,0 +1,11 @@
+.popup-btn {
+    height: 50px;
+    width: 150px;
+    font-size: 15px;
+    border-radius: 0px;
+    background-color: #1e1e1e;
+    color: white;
+    border: none;
+    font-family: sans-serif;
+}
+

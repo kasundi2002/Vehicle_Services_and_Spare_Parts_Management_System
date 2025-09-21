@@ -1,0 +1,31 @@
+.filter-container{
+    position: absolute;
+    z-index: 1;
+    background-color: white;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 1px 4px 4px 4px rgba(0, 0, 0, 0.15);
+}
+
+.category-container{
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.brand-container{
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.category-option{
+    display: flex;
+    flex-direction: column;
+}
+
+.brand-option{
+    display: flex;
+    flex-direction: column;
+}

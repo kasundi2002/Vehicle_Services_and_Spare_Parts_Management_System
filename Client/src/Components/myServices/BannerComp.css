@@ -1,0 +1,15 @@
+.imgbnr {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 50px;
+}
+.banner1{
+    width: 100%;
+    height: 180px;
+    position: absolute;
+    background-color: rgb(74, 190, 239);
+    object-position: center;
+    z-index: -1;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}

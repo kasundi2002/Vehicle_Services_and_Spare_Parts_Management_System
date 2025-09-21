@@ -1,0 +1,125 @@
+.orders-table-container {
+    height: 600px;
+    margin: 10px;
+    overflow-y: auto;
+    width: 85vw;
+}
+
+.order-filter{
+    display: flex;
+    gap: 40px;
+    justify-content: space-between;
+}
+
+.orders-table {
+    width: 83.4vw;
+    border-collapse: collapse;
+}
+
+.orders-table th {
+    background-color: #8f8f8f;
+    text-align: left;
+    padding: 8px;
+}
+
+.order-row:nth-child(even) {
+    background-color: #eceaea;
+}
+
+.orders-table td {
+    padding: 5px;
+}
+
+.action-column {
+    width: 80px;
+}
+
+
+.update-icon {
+    cursor: pointer;
+    margin-right: 5px;
+    color: blue;
+}
+
+.delete-icon {
+    cursor: pointer;
+    margin-right: 5px;
+    color: red;
+}
+
+.download-lable{
+    cursor: pointer;
+    margin-right: 5px;
+    color: green;
+}
+
+.item-list {
+    list-style-type: none;
+    padding: 0;
+}
+
+.item {
+    margin-bottom: 5px;
+}
+
+.update-popup {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: white;
+    padding: 20px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    z-index: 1000;
+    font-size: 20px;
+    font-family: sans-serif;
+}
+
+.overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+    pointer-events: auto;
+}
+
+.ordersup{
+    background-color: green;
+    margin-left: 8px;
+    border-radius: 0px;
+    width: 100px;
+    height: 45px;
+    font-size: 17px;
+}
+
+.orderscancel{
+    background-color: rgb(218, 17, 17);
+    border-radius: 0px;
+    width: 100px;
+    height: 45px;
+    font-size: 17px;
+}
+
+.statInput{
+    font-size: 17px;
+    border-radius: 0px;
+}
+
+.gReport{
+    width: 200px;
+    height: 50px;
+    border-radius: 0px;
+    background-color: green;
+    font-size: 15px;
+    margin-right: 10px;
+}
+
+.action-column{
+    display:inline-flex;
+    margin-top: 25%;
+
+}

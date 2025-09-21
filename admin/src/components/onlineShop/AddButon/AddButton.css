@@ -1,0 +1,15 @@
+.addbtn{
+    display: flex;
+    width: 250px;
+    height:50px;
+    justify-content: center;
+    align-items: center;
+    font-size: 15px;
+    color: white;
+    background-color: green;
+    border: none;
+    gap: 10px;
+    text-decoration: none;
+    border-radius: 0px;
+}
+

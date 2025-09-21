@@ -1,0 +1,6 @@
+.Users {
+    display: flex;
+    flex-direction: row;
+    width: 83.5vw;
+    margin: 10px;
+}

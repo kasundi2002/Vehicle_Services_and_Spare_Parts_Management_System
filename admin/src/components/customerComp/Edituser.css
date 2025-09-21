@@ -1,0 +1,139 @@
+.container {
+    padding: 20px;
+    background-color: #ffffff;
+}
+
+.body{
+    background-color: #77797a;
+}
+
+.font-weight-bold {
+    font-weight: bold;
+}
+
+.py-3 {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+}
+
+.mb-4 {
+    margin-bottom: 1.5rem;
+}
+
+.card {
+    border: 1px solid #dee2e6;
+    border-radius: .25rem;
+}
+
+.overflow-hidden {
+    overflow: hidden;
+}
+
+.row-bordered {
+    border-bottom: 1px solid #dee2e6;
+}
+
+.row-border-light {
+    border-color: #f8f9fa !important;
+}
+
+.pt-0 {
+    padding-top: 0 !important;
+}
+
+.media {
+    display: flex;
+    align-items: center;
+}
+
+.ui-w-80 {
+    width: 80px;
+}
+
+.rounded-circle {
+    border-radius: 50%;
+}
+
+.nav-pills {
+    display: flex;
+    flex-direction: column;
+    margin-right: -0.75rem;
+}
+
+.nav-link {
+    color: #007bff;
+    border: none;
+    border-radius: 0;
+    padding: 0.5rem 1rem;
+    margin: 0.25rem 0;
+    text-align: left;
+}
+
+.nav-link.active {
+    background-color: #f8f9fa;
+    font-weight: bold;
+}
+
+.tab-content {
+    padding: 1rem;
+}
+
+.form-control {
+    width: 100%;
+    padding: .375rem .75rem;
+    font-size: 1rem;
+    line-height: 1.5;
+    color: #495057;
+    background-color: #fff;
+    background-clip: padding-box;
+    border: 1px solid #ced4da;
+    border-radius: .25rem;
+    transition: border-color .15s ease-in-out, box-shadow .15s ease-in-out;
+}
+
+.text-right {
+    text-align: right;
+}
+
+.mt-3 {
+    margin-top: 1rem;
+}
+
+.btn {
+    display: inline-block;
+    font-weight: 400;
+    text-align: center;
+    white-space: nowrap;
+    vertical-align: middle;
+    user-select: none;
+    border: 1px solid transparent;
+    padding: .375rem .75rem;
+    font-size: 1rem;
+    line-height: 1.5;
+    border-radius: .25rem;
+    transition: color .15s ease-in-out, background-color .15s ease-in-out, border-color .15s ease-in-out, box-shadow .15s ease-in-out;
+}
+
+.btn-primary {
+    color: #fff;
+    background-color: #007bff;
+    border-color: #007bff;
+}
+
+.btn-primary:hover {
+    color: #fff;
+    background-color: #0056b3;
+    border-color: #0056b3;
+}
+
+.btn-danger {
+    color: #fff;
+    background-color: #dc3545;
+    border-color: #dc3545;
+}
+
+.btn-danger:hover {
+    color: #fff;
+    background-color: #c82333;
+    border-color: #bd2130;
+}

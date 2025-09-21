@@ -1,0 +1,17 @@
+.wrapContent-service{
+    display: flex;
+    flex-wrap: wrap;
+    max-width: 100%;
+    flex-direction: column;
+    width: 100%;
+    margin: 0 auto;
+    padding: 1em;
+}
+.left-right{
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    margin: 0 auto;
+    padding: 0;
+
+}

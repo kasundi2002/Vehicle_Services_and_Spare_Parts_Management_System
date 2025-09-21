@@ -1,0 +1,31 @@
+# CORS Vulnerability Evidence - BEFORE Fix
+
+## Test 1: Allowed Origin (should work)
+curl -I -H "Origin: http://localhost:3000" http://localhost:4000/allproducts
+
+Expected: Access-Control-Allow-Origin: http://localhost:3000
+Actual: Access-Control-Allow-Origin: *
+
+## Test 2: Malicious Origin (should be blocked but isn't)
+curl -I -H "Origin: https://malicious-site.com" http://localhost:4000/allproducts
+
+Expected: No Access-Control-Allow-Origin header
+Actual: Access-Control-Allow-Origin: *
+
+## Test 3: Preflight Request (should work for any origin)
+curl -X OPTIONS -H "Origin: https://evil.com" -H "Access-Control-Request-Method: POST" http://localhost:4000/addproduct
+
+Expected: CORS error or blocked
+Actual: Access-Control-Allow-Origin: *
+
+## Test 4: Sensitive Endpoint (should be restricted)
+curl -I -H "Origin: https://attacker.com" http://localhost:4000/login
+
+Expected: No Access-Control-Allow-Origin header
+Actual: Access-Control-Allow-Origin: *
+
+## Vulnerability Summary
+- All origins are allowed (Access-Control-Allow-Origin: *)
+- No origin validation
+- CSRF attacks possible
+- Unauthorized API access enabled

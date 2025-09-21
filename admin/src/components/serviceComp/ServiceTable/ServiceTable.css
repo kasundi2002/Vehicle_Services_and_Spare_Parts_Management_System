@@ -1,0 +1,48 @@
+.service{
+    display: flex;
+    margin: 0 auto;
+    
+}  
+.scrolltbl{
+  overflow: auto;
+  height: 550px;
+  width: auto;
+}
+
+.btblContainer{
+    height: 550px;
+    padding: 1.0em;
+    border: 1px solid #d8d8d8;
+    background-color: #ffffff;
+    border-radius: 10px;
+}
+/* Style for the table */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+    font-family: Arial, sans-serif;
+  }
+  
+  /* Style for table header */
+  th {
+    background-color: #f2f2f2;
+    padding: 8px;
+    text-align: left ;
+    border: 1px solid #c7c7c7;
+  }
+  
+  /* Style for table data */
+  td {
+    border: 1px solid #ddd;
+    padding: 7px;
+  }
+  .ckbox{
+    width: 20px;
+    height: 20px;   
+  }
+
+  .service-images{
+    width: 5rem;
+    height: auto;
+  }

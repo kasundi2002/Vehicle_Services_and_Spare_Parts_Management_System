@@ -1,0 +1,204 @@
+# Dependency Vulnerability Scan Results
+
+## Server Dependencies (17 vulnerabilities found)
+
+### Critical Vulnerabilities (1)
+- **mongoose** (8.3.0): Search injection vulnerability (CVE-2024-xxxxx)
+  - Severity: Critical
+  - CVSS Score: 9.1
+  - Fix: Update to 8.9.5 or higher
+
+### High Severity Vulnerabilities (7)
+- **express** (4.19.2): XSS via response.redirect() and multiple other issues
+  - Severity: High
+  - CVSS Score: 7.5
+  - Fix: Update to latest version
+
+- **body-parser**: Denial of service when URL encoding is enabled
+  - Severity: High
+  - CVSS Score: 7.5
+  - Fix: Update to 1.20.3 or higher
+
+- **braces**: Uncontrolled resource consumption
+  - Severity: High
+  - CVSS Score: 7.5
+  - Fix: Update to 3.0.3 or higher
+
+- **engine.io**: Multiple vulnerabilities including DoS
+  - Severity: High
+  - Fix: Update to latest version
+
+- **path-to-regexp**: ReDoS vulnerabilities
+  - Severity: High
+  - CVSS Score: 7.5
+  - Fix: Update to 0.1.12 or higher
+
+- **socket.io**: Multiple security issues
+  - Severity: High
+  - Fix: Update to latest version
+
+- **ws**: DoS when handling many HTTP headers
+  - Severity: High
+  - CVSS Score: 7.5
+  - Fix: Update to 8.17.1 or higher
+
+### Medium Severity Vulnerabilities (4)
+- **parseuri**: Regular expression Denial of Service
+  - Severity: Moderate
+  - Fix: Update to 2.0.0 or higher
+
+- **socket.io-parser**: Insufficient validation when decoding packets
+  - Severity: Moderate
+  - CVSS Score: 7.3
+  - Fix: Update to 3.3.4 or higher
+
+### Low Severity Vulnerabilities (5)
+- **cookie**: Accepts cookie name/path/domain with out of bounds characters
+- **debug**: Regular Expression Denial of Service
+- **send**: Template injection leading to XSS
+- **serve-static**: Template injection leading to XSS
+- **brace-expansion**: Regular Expression Denial of Service
+
+## Admin Dependencies (18 vulnerabilities found)
+
+### Critical Vulnerabilities (1)
+- **form-data**: Uses unsafe random function for choosing boundary
+  - Severity: Critical
+  - CWE: CWE-330
+  - Fix: Update to 4.0.4 or higher
+
+### High Severity Vulnerabilities (10)
+- **axios** (1.6.8): SSRF and credential leakage vulnerabilities
+  - Severity: High
+  - CWE: CWE-918
+  - Fix: Update to 1.12.0 or higher
+
+- **braces**: Uncontrolled resource consumption
+  - Severity: High
+  - CVSS Score: 7.5
+  - Fix: Update to 3.0.3 or higher
+
+- **canvg**: Prototype pollution vulnerability
+  - Severity: High
+  - CWE: CWE-1321
+  - Fix: Update to 3.0.11 or higher
+
+- **cross-spawn**: Regular Expression Denial of Service
+  - Severity: High
+  - CVSS Score: 7.5
+  - Fix: Update to 7.0.5 or higher
+
+- **dompurify** (3.1.0): Multiple XSS bypass vulnerabilities
+  - Severity: High
+  - CVSS Score: 7-10
+  - Fix: Update to 3.2.4 or higher
+
+- **engine.io-client**: DoS vulnerabilities
+  - Severity: High
+  - Fix: Update to latest version
+
+- **jspdf** (2.5.1): ReDoS and DoS vulnerabilities
+  - Severity: High
+  - CVSS Score: 7.5
+  - Fix: Update to 3.0.3 or higher
+
+- **jspdf-autotable**: Dependent on vulnerable jspdf
+  - Severity: High
+  - Fix: Update to 5.0.2 or higher
+
+- **rollup**: DOM clobbering leading to XSS
+  - Severity: High
+  - CVSS Score: 6.4
+  - Fix: Update to 4.22.4 or higher
+
+- **ws**: DoS when handling many HTTP headers
+  - Severity: High
+  - CVSS Score: 7.5
+  - Fix: Update to 8.17.1 or higher
+
+### Medium Severity Vulnerabilities (6)
+- **@babel/helpers**: Inefficient RegExp complexity
+  - Severity: Moderate
+  - CVSS Score: 6.2
+  - Fix: Update to 7.26.10 or higher
+
+- **@babel/runtime**: Inefficient RegExp complexity
+  - Severity: Moderate
+  - CVSS Score: 6.2
+  - Fix: Update to 7.26.10 or higher
+
+- **micromatch**: Regular Expression Denial of Service
+  - Severity: Moderate
+  - CVSS Score: 5.3
+  - Fix: Update to 4.0.8 or higher
+
+- **nanoid**: Predictable results in generation
+  - Severity: Moderate
+  - CVSS Score: 4.3
+  - Fix: Update to 3.3.8 or higher
+
+- **vite** (5.2.8): Multiple security bypasses
+  - Severity: Moderate
+  - CVSS Score: 5.3-6.5
+  - Fix: Update to 6.1.6 or higher
+
+- **esbuild**: Development server security issues
+  - Severity: Moderate
+  - CVSS Score: 5.3
+  - Fix: Update to 0.24.2 or higher
+
+### Low Severity Vulnerabilities (1)
+- **brace-expansion**: Regular Expression Denial of Service
+  - Severity: Low
+  - CVSS Score: 3.1
+  - Fix: Update to latest version
+
+## Client Dependencies
+Note: Client dependency scan was interrupted, but similar vulnerabilities are expected.
+
+## Recommended Actions
+
+### Immediate Updates Required:
+1. **mongoose**: Update to 8.9.5+ (Critical)
+2. **form-data**: Update to 4.0.4+ (Critical)
+3. **axios**: Update to 1.12.0+ (High)
+4. **dompurify**: Update to 3.2.4+ (High)
+5. **express**: Update to latest version (High)
+
+### Security Patches:
+```bash
+# Server directory
+cd Server
+npm audit fix --force
+npm update
+
+# Admin directory  
+cd ../admin
+npm audit fix --force
+npm update
+
+# Client directory
+cd ../Client
+npm audit fix --force
+npm update
+```
+
+### Additional Security Measures:
+1. Enable npm audit in CI/CD pipeline
+2. Use `npm audit --audit-level=moderate` for stricter scanning
+3. Consider using `npm-check-updates` for dependency updates
+4. Implement automated dependency scanning with tools like Snyk or GitHub Dependabot
+
+## Summary
+- **Total Vulnerabilities Found**: 35+ across all projects
+- **Critical**: 2 vulnerabilities requiring immediate attention
+- **High**: 17 vulnerabilities requiring urgent fixes
+- **Medium**: 10 vulnerabilities requiring timely updates
+- **Low**: 6 vulnerabilities for maintenance updates
+
+All vulnerabilities have available fixes and should be updated immediately to improve security posture.
+
+
+
+
+

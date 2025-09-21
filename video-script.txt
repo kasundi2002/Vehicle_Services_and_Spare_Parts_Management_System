@@ -1,0 +1,18 @@
+# Video Script for Security Audit Presentation (2.5 minutes)
+
+## Team Member 1 (30 seconds) - Introduction & Overview
+"Hello, I'm [Name] and I'll be presenting our security audit findings for the Vehicle Services and Spare Parts Management System. We conducted a comprehensive security analysis and discovered 15 critical vulnerabilities across authentication, data protection, and input validation. Our audit covered static code analysis, dependency scanning, and manual testing."
+
+## Team Member 2 (45 seconds) - Critical Vulnerabilities
+"I'm [Name] and I'll cover our most critical findings. We found three critical vulnerabilities: hardcoded JWT secrets in the source code, plaintext password storage without any hashing, and exposed MongoDB credentials. These issues allow complete authentication bypass and unauthorized database access. We also identified 17 vulnerable dependencies including a critical search injection vulnerability in Mongoose. Our fixes include implementing bcrypt for password hashing, using environment variables for secrets, and updating all dependencies to secure versions."
+
+## Team Member 3 (45 seconds) - High Priority Fixes & OAuth Plan
+"I'm [Name] and I'll discuss our high-priority security fixes. We found unrestricted CORS policies allowing any website to access our API, missing security headers, and insecure file uploads without validation. We're implementing helmet for security headers, rate limiting for DoS protection, and comprehensive input validation. Additionally, we've created an OAuth2/OpenID Connect implementation plan using Google OAuth to eliminate password-related vulnerabilities and improve user experience with one-click authentication."
+
+## Team Member 4 (30 seconds) - Implementation & Next Steps
+"I'm [Name] and I'll outline our implementation approach. We've provided complete code patches for all vulnerabilities, updated package.json files with secure dependencies, and created environment variable templates. Our next steps include implementing the security fixes in phases, setting up automated dependency scanning in CI/CD, and conducting thorough testing. We've also prepared GitHub issues for each vulnerability with detailed reproduction steps and fix recommendations. The security improvements will significantly enhance our application's security posture."
+
+
+
+
+

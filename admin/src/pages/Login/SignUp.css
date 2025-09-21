@@ -1,0 +1,64 @@
+.user-form{
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 20px;
+    border: 1px solid #ccc;
+    font-family: sans-serif;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.User-head{
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.block-container{
+    margin-bottom: 15px;
+}
+
+.head-input{
+    display: block;
+    font-weight: bold;
+}
+
+.data{
+    width: 600px;
+    padding: 10px;
+    font-size: 16px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+input[type="checkbox"] {
+    width: auto;
+    display: inline-block;
+    margin-right: 10px;
+}
+
+.con{
+    display: block;
+    width: 100%;
+    padding: 12px;
+    margin-top: 20px;
+    font-size: 16px;
+    background-color: #007bff;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.con:hover{
+    background-color: #0056b3;
+}
+
+.roles{
+    text-align: center;
+}
+
+.checkbox-container{
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-gap: 10px;
+}

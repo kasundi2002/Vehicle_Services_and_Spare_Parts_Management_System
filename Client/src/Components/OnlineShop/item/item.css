@@ -1,0 +1,46 @@
+body {
+    perspective: 1000px;
+  }
+
+.item{
+    width:350px;
+    border-radius: 5px;
+    box-shadow: 10px 10px 20px rgba(0, 0, 0, 0.3);
+}
+
+.item img{
+    width: 350px;
+}
+
+.details{
+    padding: 10px;
+    background: linear-gradient(0deg, #007cb1 0%, #e1ffea22 100%);
+    border: 2px ;
+}
+
+.item p {
+    margin: 6px 0px;
+}
+
+.item-prices{
+    display: flex;
+    gap: 20px;
+}
+
+.item-price-new{
+    color: red;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.item-price-old{
+    color: rgba(0, 0, 0, 0.5);
+    font-size: 18px;
+    text-decoration: line-through;
+}
+
+.item:hover{
+    box-shadow: 1px 4px 4px 4px rgba(0, 0, 0, 0.15);
+    transition: 0.1s;
+
+}

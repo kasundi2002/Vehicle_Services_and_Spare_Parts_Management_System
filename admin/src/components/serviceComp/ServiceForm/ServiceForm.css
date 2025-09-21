@@ -1,0 +1,48 @@
+.f-container {
+  max-width: 22rem;
+  width: auto;
+  margin: auto;
+  height: 600px;
+  border: 1px solid #1a1818;
+  border-radius: 10px;
+  padding: 1em 2em;
+  font-family: Arial, sans-serif;
+  background: rgb(33, 61, 87);
+  color: white;
+}
+
+.lab {
+    display: block;
+    margin-top: 10px;
+    margin-bottom: 5px;
+    font-size: 1em;
+    color: white;
+  }
+
+  .s-image {
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .import-button {
+    display: block;
+    margin-top: 10px;
+    margin-left: 9rem;
+  }
+  
+  input, textarea, button {
+     margin-top:10px;   
+  }
+  
+  .buttons{
+    margin-left: 7rem;
+  }
+
+  .addService-thumbnail{
+    width:150px;
+    background: #ffffff;
+    border-radius: 10px;
+    object-fit: contain;
+    margin-top: 30px;
+}
