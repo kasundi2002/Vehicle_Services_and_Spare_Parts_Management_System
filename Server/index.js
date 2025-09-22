@@ -263,7 +263,7 @@ app.post('/removeproduct',async (req,res)=>{
 
 // Creating API for getting all products
 
-app.get('/allproducts',async (req, res)=>{
+app.get('/allproducts', requireAuth, async (req, res)=>{
     let products = await Product.find({})
     console.log("All Products Fetched");
     res.send(products);
@@ -331,7 +331,7 @@ app.get('/product/:id', async (req, res) => {
     }
 });
 
-app.get('/lowStockProducts', async (req, res) => {
+app.get('/lowStockProducts', requireAuth, hasRole(['admin']), async (req, res) => {
     try {
         let products = await Product.find({});
         
@@ -350,7 +350,7 @@ app.get('/lowStockProducts', async (req, res) => {
     }
 });
 
-app.get('/processingOrdersCount', async (req, res) => {
+app.get('/processingOrdersCount', requireAuth, hasRole(['admin']), async (req, res) => {
     try {
         let orders = await Order.find({});
 
@@ -410,23 +410,24 @@ app.post('/signup',async (req,res) =>{
 
 
 // Route to handle admin signup
-app.post('/adminsignup', async (req, res) => {
+app.post('/adminsignup', requireAuth, hasRole(['admin']), async (req, res) => {
     try {
-        const { name, email, password, roles } = req.body;
-
+        // Block mass assignment - only allow specific fields
+        const allowed = pick(req.body, ['name', 'email', 'password']);
+        
         // Check if admin with the same email already exists
-        const existingAdmin = await Admins.findOne({ email });
+        const existingAdmin = await Admins.findOne({ email: allowed.email });
 
         if (existingAdmin) {
             return res.status(400).json({ success: false, errors: "An admin with this email already exists" });
         }
 
-        // Create a new Admin document
-        const newAdmin = new Admin({
-            name,
-            email,
-            password,
-            role: roles || [],  // Assign roles array to 'role' field
+        // Create a new Admin document - server sets role, not client
+        const newAdmin = new Admins({
+            name: allowed.name,
+            email: allowed.email,
+            password: allowed.password,
+            role: ['admin']  // Server sets role, not from client input
         });
 
         // Save the newAdmin document to the database
@@ -515,7 +516,7 @@ app.post('/adminlogin', async (req,res) => {
     }
 })
 
-app.get('/newcollections', async (req,res) =>{
+app.get('/newcollections', requireAuth, async (req,res) =>{
     let products = await Product.find({});
     let newcollection = products.slice(1).slice(-8);
     console.log("NewCollection Fetched");
@@ -537,6 +538,69 @@ const fetchUser = async (req,res,next)=>{
             res.status(401).send({errors:"please authenticate using valid token"})
         }
     }
+}
+
+// ===== SECURITY HELPERS =====
+// Extract bearer token and verify (re-use existing secret/config)
+const JWT_SECRET = process.env.JWT_SECRET || process.env.SECRET || 'changeme';
+
+// Auth: requires any logged-in user (populates req.user = { id, role, ... })
+function requireAuth(req, res, next) {
+  try {
+    const h = req.headers.authorization || '';
+    const token = h.startsWith('Bearer ') ? h.slice(7) : null;
+    if (!token) return res.status(401).json({ message: 'Auth required' });
+    const payload = jwt.verify(token, JWT_SECRET);
+    // normalize user/admin token shapes (data.user vs data.Admin from audit)
+    const u = payload?.data?.user || payload?.data?.User || payload?.data?.Admin || payload?.user || payload?.admin || payload;
+    if (!u) return res.status(401).json({ message: 'Invalid token' });
+    req.user = {
+      id: u._id || u.id,
+      role: u.role || u.userRole || (u.isAdmin ? 'admin' : 'user') || 'user',
+      email: u.email
+    };
+    return next();
+  } catch (e) {
+    return res.status(401).json({ message: 'Invalid/expired token' });
+  }
+}
+
+// RBAC: require one of the allowed roles
+function hasRole(roles = []) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ message: 'Auth required' });
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({ message: 'Forbidden: insufficient role' });
+    }
+    next();
+  };
+}
+
+// Ownership guard factory for ID-based resources
+// Attempts ownership by common fields; allows admins regardless.
+async function assertOwnershipOrAdmin(Model, idSelector, ownerFields = ['userId','ownerId','createdBy','customerId','assigned_to']) {
+  return async (req, res, next) => {
+    try {
+      if (!req.user) return res.status(401).json({ message: 'Auth required' });
+      if (req.user.role === 'admin') return next();
+      const id = idSelector(req);
+      if (!id) return res.status(400).json({ message: 'Invalid id' });
+      const doc = await Model.findById(id).lean();
+      if (!doc) return res.status(404).json({ message: 'Not found' });
+      const owns = ownerFields.some(f => (doc[f]?.toString?.() || doc[f]) === (req.user.id?.toString?.() || req.user.id));
+      if (!owns) return res.status(403).json({ message: 'Forbidden: not owner' });
+      return next();
+    } catch (e) {
+      return res.status(500).json({ message: 'Ownership check failed' });
+    }
+  };
+}
+
+// Allowlist body fields to prevent mass-assignment
+function pick(obj, allowed = []) {
+  const out = {};
+  allowed.forEach(k => { if (obj[k] !== undefined) out[k] = obj[k]; });
+  return out;
 }
 
 app.post('/addtocart', fetchUser, async (req, res) => {
@@ -720,10 +784,11 @@ app.get('/product/quantity/:id', async (req, res) => {
 });
 
 // Define route for fetching all orders data
-app.get('/orders', async (req, res) => {
+app.get('/orders', requireAuth, async (req, res) => {
     try {
-
-        const orders = await Order.find({});
+        // Scope orders based on user role
+        const query = req.user.role === 'admin' ? {} : { userId: req.user.id };
+        const orders = await Order.find(query);
 
         res.json({ success: true, orders });
     } catch (error) {
@@ -733,7 +798,7 @@ app.get('/orders', async (req, res) => {
 });
 
 // Define route for delete order
-app.delete('/order/:id', async (req, res) => {
+app.delete('/order/:id', requireAuth, hasRole(['admin']), async (req, res) => {
     try {
         const orderId = req.params.id;
         const deletedOrder = await Order.findOneAndDelete({ orderId });
@@ -783,7 +848,7 @@ app.put('/order/:id', async (req, res) => {
     }
 });
 
-app.get('/processingOrders', async (req, res) => {
+app.get('/processingOrders', requireAuth, hasRole(['admin']), async (req, res) => {
     try {
         const processingOrdersCount = await Order.countDocuments({ status: 'processing' });
         res.json({ success: true, processingOrdersCount });
@@ -793,7 +858,7 @@ app.get('/processingOrders', async (req, res) => {
     }
 });
 
-app.get('/shippedOrders', async (req, res) => {
+app.get('/shippedOrders', requireAuth, hasRole(['admin']), async (req, res) => {
     try {
         const shippedOrdersCount = await Order.countDocuments({ status: 'shipped' });
         res.json({ success: true, shippedOrdersCount });
@@ -804,7 +869,7 @@ app.get('/shippedOrders', async (req, res) => {
 });
 
 // Creating API to get the total amount of all orders
-app.get('/totalAmountOfOrders', async (req, res) => {
+app.get('/totalAmountOfOrders', requireAuth, hasRole(['admin']), async (req, res) => {
     try {
         // Fetch all orders
         const orders = await Order.find({});
@@ -820,7 +885,7 @@ app.get('/totalAmountOfOrders', async (req, res) => {
 });
 
 
-app.get('/deliveredOrders', async (req, res) => {
+app.get('/deliveredOrders', requireAuth, hasRole(['admin']), async (req, res) => {
     try {
         const deliveredOrdersCount = await Order.countDocuments({ status: 'delivered' });
         res.json({ success: true, deliveredOrdersCount });
@@ -831,7 +896,7 @@ app.get('/deliveredOrders', async (req, res) => {
 });
 
 // Creating API to get the total amount of all orders
-app.get('/totalAmountOfOrders', async (req, res) => {
+app.get('/totalAmountOfOrders', requireAuth, hasRole(['admin']), async (req, res) => {
     try {
         // Fetch all orders
         const orders = await Order.find({});
@@ -846,7 +911,7 @@ app.get('/totalAmountOfOrders', async (req, res) => {
     }
 });
 
-app.get('/totalAmountOfDelivered', async (req, res) => {
+app.get('/totalAmountOfDelivered', requireAuth, hasRole(['admin']), async (req, res) => {
     try {
         // Fetch orders with status 'delivered'
         const deliveredOrders = await Order.find({ status: 'delivered' });
@@ -861,7 +926,7 @@ app.get('/totalAmountOfDelivered', async (req, res) => {
     }
 });
 
-app.get('/totalAmountOfPending', async (req, res) => {
+app.get('/totalAmountOfPending', requireAuth, hasRole(['admin']), async (req, res) => {
     try {
         // Fetch orders with status 'shipped' or 'processing'
         const pendingOrders = await Order.find({ status: { $in: ['shipped', 'processing'] } });
@@ -883,7 +948,7 @@ app.get('/totalAmountOfPending', async (req, res) => {
 
 const Booking = require('./models/BookingModel');
 
-app.post('/addbooking', async (req, res) => {
+app.post('/addbooking', requireAuth, async (req, res) => {
     try {
       // Validate input
       const { error, value } = bookingSchema.validate(req.body, { allowUnknown: false });
@@ -891,8 +956,11 @@ app.post('/addbooking', async (req, res) => {
         return res.status(400).json({ error: error.details[0].message });
       }
   
+      // Block mass assignment - only allow specific fields
+      const allowed = pick(value, ['ownerName', 'email', 'phone', 'specialNotes', 'location', 'serviceType', 'vehicleModel', 'vehicleNumber', 'date', 'time']);
+      
       // Create a new booking instance
-      const newBooking = new Booking(value);
+      const newBooking = new Booking(allowed);
   
       // Save the booking to the database
       await newBooking.save();
@@ -949,7 +1017,7 @@ app.put('/updateBookingStatus2/:id', async (req, res) => {
   
 
     // Update booking details route
-    app.put('/updateBookingDetails/:id', async (req, res) => {
+    app.put('/updateBookingDetails/:id', requireAuth, hasRole(['admin']), async (req, res) => {
         try {
           const { id } = req.params;
           
@@ -959,9 +1027,12 @@ app.put('/updateBookingStatus2/:id', async (req, res) => {
             return res.status(400).json({ error: error.details[0].message });
           }
           
+          // Block mass assignment - only allow specific fields
+          const allowed = pick(value, ['ownerName', 'email', 'phone', 'specialNotes', 'location', 'serviceType', 'vehicleModel', 'vehicleNumber', 'date', 'time']);
+          
           const updatedBooking = await Booking.findByIdAndUpdate(
             id,
-            value, // Update booking details
+            allowed, // Update booking details
             { new: true, runValidators: true }
           );
     
@@ -976,7 +1047,7 @@ app.put('/updateBookingStatus2/:id', async (req, res) => {
         }); 
     
     //get all booking details
-    app.get('/allBookingRequest', async (req, res) => {
+    app.get('/allBookingRequest', requireAuth, hasRole(['admin']), async (req, res) => {
         try {
             const data = await Booking.find();
             res.json(data);
@@ -994,7 +1065,7 @@ app.put('/updateBookingStatus2/:id', async (req, res) => {
 const Service = require('./models/ServiceModel');
 
 // POST route for adding a new service
-app.post('/addservice', upload.single('image'), async (req, res) => {
+app.post('/addservice', requireAuth, hasRole(['admin']), upload.single('image'), async (req, res) => {
     try {
         // Validate input
         const { error, value } = serviceSchema.validate(req.body, { allowUnknown: false });
@@ -1002,18 +1073,21 @@ app.post('/addservice', upload.single('image'), async (req, res) => {
             return res.status(400).json({ error: error.details[0].message });
         }
 
+        // Block mass assignment - only allow specific fields
+        const allowed = pick(value, ['serviceTitle', 'estimatedHour', 'details', 'image']);
+
         // Create new service object
         const newService = new Service({
-            serviceTitle: value.serviceTitle,
-            estimatedHour: value.estimatedHour,
-            details: value.details,
-            imagePath: value.image, // Save image path
+            serviceTitle: allowed.serviceTitle,
+            estimatedHour: allowed.estimatedHour,
+            details: allowed.details,
+            imagePath: allowed.image, // Save image path
         });
         // Save the service to MongoDB
         await newService.save();
         res.json({
             success: true,
-            name: value.serviceTitle,
+            name: allowed.serviceTitle,
         });
     } catch (error) {
         console.error('Error adding service:', error);
@@ -1022,11 +1096,11 @@ app.post('/addservice', upload.single('image'), async (req, res) => {
 });
 
 // 3. Create API endpoint to retrieve data
-app.get('/allServices', async (req, res) => {
+app.get('/allServices', requireAuth, async (req, res) => {
     try {
       const data = await Service.find();
       res.json(data);
-      console.log("All Booking Requests Fetched");
+      console.log("All Services Fetched");
 
     } catch (error) {
       console.error(error);
@@ -1036,7 +1110,7 @@ app.get('/allServices', async (req, res) => {
 
 
   // Define route for deleting booking requests
-app.delete('/deleteBookingRequest/:id', async (req, res) => {
+app.delete('/deleteBookingRequest/:id', requireAuth, hasRole(['admin']), async (req, res) => {
     const requestId = req.params.id;
   
     try {
@@ -1052,21 +1126,21 @@ app.delete('/deleteBookingRequest/:id', async (req, res) => {
   
   
   // Define route for deleting Services
-app.delete('/deleteServices/:id', async (req, res) => {
+app.delete('/deleteServices/:id', requireAuth, hasRole(['admin']), async (req, res) => {
     const requestId = req.params.id;
   
     try {
       // Find the Services by ID and delete it
       await Service.findByIdAndDelete(requestId);
-      res.status(200).send('Booking request deleted successfully');
+      res.status(200).send('Service deleted successfully');
     } catch (error) {
-      console.error('Error deleting booking request:', error);
+      console.error('Error deleting service:', error);
       res.status(500).send('Internal server error');
     }
   });
 
   // Add a new route to handle service updates
-app.put('/updateservice/:id', async (req, res) => {
+app.put('/updateservice/:id', requireAuth, hasRole(['admin']), async (req, res) => {
     try {
         const { id } = req.params;
         
@@ -1076,8 +1150,11 @@ app.put('/updateservice/:id', async (req, res) => {
             return res.status(400).json({ error: error.details[0].message });
         }
 
+        // Block mass assignment - only allow specific fields
+        const allowed = pick(value, ['serviceTitle', 'estimatedHour', 'details', 'image']);
+
         // Find and update the service in the database
-        const updatedService = await Service.findByIdAndUpdate(id, value, { new: true, runValidators: true });
+        const updatedService = await Service.findByIdAndUpdate(id, allowed, { new: true, runValidators: true });
         
         if (!updatedService) {
             return res.status(404).json({ error: 'Service not found' });
@@ -1096,7 +1173,7 @@ app.put('/updateservice/:id', async (req, res) => {
 const Admin = require("./models/OnlineShopModels/Admin");
 
   //Route for save new Issue
-app.post('/issues', async (request, response) => {
+app.post('/issues', requireAuth, async (request, response) => {
     try {
         // Validate input
         const { error, value } = issueSchema.validate(request.body, { allowUnknown: false });
@@ -1106,7 +1183,10 @@ app.post('/issues', async (request, response) => {
             });
         }
 
-        const issue = await Issue.create(value);
+        // Block mass assignment - only allow specific fields
+        const allowed = pick(value, ['cid', 'Cname', 'Cnic', 'Ccontact', 'Clocation', 'Cstatus']);
+
+        const issue = await Issue.create(allowed);
         return response.status(201).send(issue);
     } catch (error) {
         console.log(error.message);
@@ -1115,7 +1195,7 @@ app.post('/issues', async (request, response) => {
 });
 
 //Route for get all books from database
-app.get('/issues', async (request, response) => {
+app.get('/issues', requireAuth, async (request, response) => {
     try {
         const issues = await Issue.find({});
         return response.status(200).json({
@@ -1123,26 +1203,29 @@ app.get('/issues', async (request, response) => {
             data: issues
         });
     } catch (error) {
-        confirm.log(error.message);
+        console.log(error.message);
         response.status(500).send({ message: error.message });
     }
 });
 
 //Route for get one book from database by id
-app.get('/issues/:id', async (request, response) => {
+app.get('/issues/:id', requireAuth, async (request, response) => {
     try {
         const { id } = request.params;
 
         const issue = await Issue.findById(id);
+        if (!issue) {
+            return response.status(404).json({ message: 'Issue not found' });
+        }
         return response.status(200).json(issue);
     } catch (error) {
-        confirm.log(error.message);
+        console.log(error.message);
         response.status(500).send({ message: error.message });
     }
 });
 
 //Route for update a Book
-app.put('/issues/:id', async (request, response) => {
+app.put('/issues/:id', requireAuth, async (request, response) => {
     try {
         // Validate input
         const { error, value } = issueSchema.validate(request.body, { allowUnknown: false });
@@ -1154,7 +1237,9 @@ app.put('/issues/:id', async (request, response) => {
 
         const { id } = request.params;
 
-        const result = await Issue.findByIdAndUpdate(id, value, { new: true, runValidators: true });
+        // Block mass assignment - only allow specific fields
+        const allowed = pick(value, ['cid', 'Cname', 'Cnic', 'Ccontact', 'Clocation', 'Cstatus']);
+        const result = await Issue.findByIdAndUpdate(id, allowed, { new: true, runValidators: true });
 
         if (!result) {
             return response.status(404).json({ message: 'Issue not found' });
@@ -1169,7 +1254,7 @@ app.put('/issues/:id', async (request, response) => {
 });
 
 //Route for Delete a issue 
-app.delete('/issues/:id', async (request, response) => {
+app.delete('/issues/:id', requireAuth, hasRole(['admin']), async (request, response) => {
     try {
         const { id } = request.params;
 
@@ -1191,7 +1276,7 @@ app.delete('/issues/:id', async (request, response) => {
 
 const Customers = require("./models/customerModel");
 
-app.post("/customers/", (req, res) => {
+app.post("/customers/", requireAuth, hasRole(['admin']), (req, res) => {
     try {
         // Validate input
         const { error, value } = customerSchema.validate(req.body, { allowUnknown: false });
@@ -1199,7 +1284,10 @@ app.post("/customers/", (req, res) => {
             return res.status(400).json({ msg: error.details[0].message });
         }
 
-        Customers.create(value)
+        // Block mass assignment - only allow specific fields
+        const allowed = pick(value, ['customerID', 'name', 'NIC', 'address', 'contactno', 'email', 'vType', 'vName', 'Regno', 'vColor', 'vFuel']);
+
+        Customers.create(allowed)
             .then(() => res.json({ msg: "Customer added successfully" }))
             .catch((err) => {
                 console.error("Error creating customer:", err);
@@ -1211,20 +1299,26 @@ app.post("/customers/", (req, res) => {
     }
 });
 
-app.get("/customers/", (req, res) => {
+app.get("/customers/", requireAuth, hasRole(['admin']), (req, res) => {
 
     Customers.find()
         .then((customers) => res.json(customers))
-        .catch(() => rex.status(400).json({ msg: "No employee" }));
+        .catch(() => res.status(400).json({ msg: "No customers" }));
 });
 
-app.get("/customers/:id", (req, res) => {
-    Customers.findById(req.params.id)
-        .then((customers) => res.json(customers))
-        .catch(() => res.status(400).json({ msg: "cannot find this customer" }))
+app.get("/customers/:id", requireAuth, async (req, res) => {
+    try {
+        const customer = await Customers.findById(req.params.id);
+        if (!customer) {
+            return res.status(404).json({ msg: "Customer not found" });
+        }
+        res.json(customer);
+    } catch (error) {
+        res.status(500).json({ msg: "Internal server error" });
+    }
 });
 
-app.put("/customers/:id", (req, res) => {
+app.put("/customers/:id", requireAuth, hasRole(['admin']), (req, res) => {
     try {
         // Validate input
         const { error, value } = customerSchema.validate(req.body, { allowUnknown: false });
@@ -1232,7 +1326,10 @@ app.put("/customers/:id", (req, res) => {
             return res.status(400).json({ msg: error.details[0].message });
         }
 
-        Customers.findByIdAndUpdate(req.params.id, value, { runValidators: true, new: true })
+        // Block mass assignment - only allow specific fields
+        const allowed = pick(value, ['customerID', 'name', 'NIC', 'address', 'contactno', 'email', 'vType', 'vName', 'Regno', 'vColor', 'vFuel']);
+
+        Customers.findByIdAndUpdate(req.params.id, allowed, { runValidators: true, new: true })
             .then((updatedCustomer) => {
                 if (!updatedCustomer) {
                     return res.status(404).json({ msg: "Customer not found" });
@@ -1249,21 +1346,21 @@ app.put("/customers/:id", (req, res) => {
     }
 });
 
-app.delete("/customers/:id", (req, res) => {
+app.delete("/customers/:id", requireAuth, hasRole(['admin']), (req, res) => {
     Customers.findByIdAndDelete(req.params.id).then(() =>
         res
             .json({ msg: "Delete successfully" }))
             .catch(() => res.status(400).json({ msg: "Delete fail" }));
 });
 
-app.get('/allusers',async (req, res)=>{
-    let users = await Admin.find({})
+app.get('/allusers', requireAuth, hasRole(['admin']), async (req, res)=>{
+    let users = await Admins.find({})
     console.log("All Users Fetched");
     res.send(users);
 })
 
-app.delete("/users/:id", (req, res) => {
-    Admin.findByIdAndDelete(req.params.id).then(() =>
+app.delete("/users/:id", requireAuth, hasRole(['admin']), (req, res) => {
+    Admins.findByIdAndDelete(req.params.id).then(() =>
         res
             .json({ msg: "Delete successfully" }))
             .catch(() => res.status(400).json({ msg: "Delete fail" }));
