@@ -15,6 +15,59 @@ var nodemailer = require('nodemailer');
 
 app.use(express.json());
 
+// Trust proxy (needed for accurate req.ip behind reverse proxies like Render/NGINX)
+app.set('trust proxy', 1);
+
+// Simple in-memory rate limiting (per-IP token bucket)
+// Note: For production at scale, prefer Redis or an external store.
+const rateBucketStore = new Map();
+
+function createRateLimiter(options) {
+	const windowMs = options.windowMs || 60 * 1000;
+	const max = options.max || 100;
+	const keyGenerator = options.keyGenerator || ((req) => req.ip);
+	const onLimitReached = options.onLimitReached || (() => {});
+
+	return function rateLimiterMiddleware(req, res, next) {
+		const now = Date.now();
+		const key = keyGenerator(req);
+		let bucket = rateBucketStore.get(key);
+		if (!bucket) {
+			bucket = [];
+			rateBucketStore.set(key, bucket);
+		}
+		// Remove timestamps older than window
+		while (bucket.length && (now - bucket[0]) > windowMs) {
+			bucket.shift();
+		}
+		if (bucket.length >= max) {
+			const retryAfterSec = Math.ceil((windowMs - (now - bucket[0])) / 1000);
+			res.setHeader('Retry-After', String(retryAfterSec));
+			onLimitReached(req, res);
+			return res.status(429).json({ success: false, error: 'Too many requests. Please try again later.' });
+		}
+		bucket.push(now);
+		next();
+	};
+}
+
+// Global limiter: 100 requests per minute per IP
+const globalLimiter = createRateLimiter({ windowMs: 60 * 1000, max: 100 });
+app.use(globalLimiter);
+
+// Stricter auth limiter: 10 requests per minute per IP
+const authLimiter = createRateLimiter({ windowMs: 60 * 1000, max: 10 });
+app.use(['/login', '/signup', '/adminlogin', '/adminsignup'], authLimiter);
+
+// Upload limiter: 20 requests per minute per IP
+const uploadLimiter = createRateLimiter({ windowMs: 60 * 1000, max: 20 });
+app.use(['/upload'], uploadLimiter);
+
+// Cart limiter: 30 requests per minute per IP
+const cartLimiter = createRateLimiter({ windowMs: 60 * 1000, max: 30 });
+app.use(['/addtocart', '/removefromcart', '/getcart'], cartLimiter);
+
+
 // CORS Configuration with allowlist
 const allowedOrigins = process.env.ALLOWED_ORIGINS 
     ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
