@@ -5,8 +5,23 @@ const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const path = require("path");
 const cors = require("cors");
+const helmet = require("helmet");
 const { log } = require("console");
 const Joi = require("joi");
+
+// Trust reverse proxy (Render/Heroku/NGINX) so req.secure & x-forwarded-proto work
+app.set('trust proxy', 1);
+
+// Remove Express fingerprinting
+app.disable('x-powered-by');
+
+// Helmet baseline (no CSP here — handled by another member)
+app.use(helmet({
+  frameguard: { action: 'deny' },   // X-Frame-Options: DENY
+  hidePoweredBy: true,              // X-Powered-By removed
+  noSniff: true,                    // X-Content-Type-Options: nosniff
+  referrerPolicy: { policy: 'no-referrer' } // optional but safe default
+}));
 const Product = require("./models/OnlineShopModels/Product");
 const Users = require("./models/OnlineShopModels/Users");
 const Order = require("./models/OnlineShopModels/Order");
@@ -89,24 +104,41 @@ const issueSchema = Joi.object({
   Cstatus: Joi.string().valid('pending', 'in_progress', 'resolved', 'closed').required()
 });
 
-// CORS configuration with strict allow-list
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:3000,https://vehicle-sever.onrender.com')
-  .split(',').map(s => s.trim());
+// Strict CORS with allow-list
+const allowed = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:3000,https://vehicle-sever.onrender.com')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
 
 const corsOptions = {
-  origin: function (origin, cb) {
-    // allow same-origin / mobile apps (no Origin header)
+  origin(origin, cb) {
+    // allow same-origin / non-browser clients without Origin
     if (!origin) return cb(null, true);
-    return allowedOrigins.includes(origin) ? cb(null, true) : cb(new Error('CORS blocked'), false);
+    if (allowed.includes(origin)) return cb(null, true);
+    return cb(new Error('CORS blocked: origin not allowed'), false);
   },
   methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
   allowedHeaders: ['Content-Type','Authorization','X-Requested-With','auth-token'],
-  // Enable credentials only if the app uses cookies/auth cross-site:
-  // credentials: true
+  // Only enable credentials if the app actually uses cookies across origins.
+  // credentials: true,
+  optionsSuccessStatus: 204
 };
 
 app.use(express.json());
 app.use(cors(corsOptions));
+
+// HSTS (production + HTTPS only)
+const isProd = process.env.NODE_ENV === 'production';
+
+if (isProd) {
+  app.use((req, res, next) => {
+    const https = req.secure || req.headers['x-forwarded-proto'] === 'https';
+    if (https) {
+      res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
+    next();
+  });
+}
 
 // MongoDB Connection - Mongo uri exposure vulnerability fixed by Kasundi
 const mongoURI = process.env.MONGO_URI || "mongodb://localhost:27017/vehicle_services";
