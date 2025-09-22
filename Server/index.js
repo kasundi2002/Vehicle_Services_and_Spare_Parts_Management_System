@@ -90,7 +90,7 @@ const issueSchema = Joi.object({
 });
 
 // CORS configuration with strict allow-list
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:3000,https://vehicle-sever.onrender.com')
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'mongodb+srv://vehicleitp:eFjJAL4N51QEABXK@test.fw5mj0t.mongodb.net/?retryWrites=true&w=majority&appName=test')
   .split(',').map(s => s.trim());
 
 const corsOptions = {
