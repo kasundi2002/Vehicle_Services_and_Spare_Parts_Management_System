@@ -1,1019 +1,1047 @@
+// server.js
+require("dotenv").config();
+
 const express = require("express");
 const app = express();
+
 const mongoose = require("mongoose");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const path = require("path");
 const cors = require("cors");
-const { log } = require("console");
+const helmet = require("helmet");
+const cookieParser = require("cookie-parser");
+const session = require("express-session");
+const Joi = require("joi");
+const nodemailer = require("nodemailer");
+
+// Google OpenID Connect & OAuth2
+const { Issuer, generators } = require("openid-client");
+const { OAuth2Client } = require("google-auth-library");
+
+if (!process.env.MONGODB_URL) {
+  console.error("MONGODB_URL is missing. Check your .env placement & syntax.");
+  process.exit(1);
+}
+
+if (!process.env.PORT) {
+  console.error("PORT is missing. Check your .env placement & syntax.");
+  process.exit(1);
+}
+
+
+const {
+  PORT = 4000,
+  MONGODB_URL = "mongodb://localhost:27017/vehicle_services",
+  FRONTEND_ORIGIN,
+  SESSION_SECRET,
+  OIDC_ISSUER,
+  OIDC_CLIENT_ID,
+  OIDC_CLIENT_SECRET,
+  OIDC_REDIRECT_URI,
+  NODE_ENV = "development",
+
+  EMAIL_ADD,
+  EMAIL_PW,
+  EMAIL_ADD2,
+  EMAIL_PW2,
+
+  JWT_SECRET,
+  // CORS allow-list (comma-separated). If not set, we allow common local ports.
+  ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:3000"
+} = process.env;
+
+const isProd = NODE_ENV === "production";
+
+// --------- APP HARDENING ---------
+app.set("trust proxy", 1);               // behind a proxy
+app.disable("x-powered-by");
+app.use(helmet({
+  frameguard: { action: "deny" },
+  hidePoweredBy: true,
+  noSniff: true,
+  referrerPolicy: { policy: "no-referrer" }
+}));
+
+// --------- CORS (cookies need credentials + exact origin) ---------
+const allowList = ALLOWED_ORIGINS.split(",").map(s => s.trim()).filter(Boolean);
+app.use(cors({
+  origin(origin, cb) {
+    if (!origin) return cb(null, true);                 // same-origin / curl
+    if (allowList.includes(origin)) return cb(null, true);
+    return cb(new Error("CORS blocked: origin not allowed"), false);
+  },
+  credentials: true,
+  methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
+  allowedHeaders: ["Content-Type","Authorization","X-Requested-With","auth-token"]
+}));
+
+app.use(cookieParser());
+app.use(express.json());
+
+// --------- SESSIONS (for OIDC/OAuth) ---------
+// In prod (HTTPS), SameSite=None + Secure=true. In dev, we still use None to allow cross-origin fetch with credentials.
+app.use(session({
+  name: "sid",
+  secret: SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    sameSite: "none",
+    secure: isProd,                 // true in prod (HTTPS). false in dev.
+    maxAge: 1000 * 60 * 60 * 8
+  }
+}));
+
+// Optional HSTS for HTTPS
+if (isProd) {
+  app.use((req, res, next) => {
+    const https = req.secure || req.headers["x-forwarded-proto"] === "https";
+    if (https) res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    next();
+  });
+}
+
+// --------- DB ---------
+mongoose.connect(MONGODB_URL)
+  .then(() => console.log("MongoDB Connected"))
+  .catch((err) => console.error("MongoDB Connection Error:", err));
+
+// --------- MODELS ---------
 const Product = require("./models/OnlineShopModels/Product");
 const Users = require("./models/OnlineShopModels/Users");
 const Order = require("./models/OnlineShopModels/Order");
-const Admins = require("./models/OnlineShopModels/Admin")
-var nodemailer = require('nodemailer');
+const Admins = require("./models/OnlineShopModels/Admin");
+const Customers = require("./models/customerModel");
+const Booking = require("./models/BookingModel");
+const Service = require("./models/ServiceModel");
+const Issue = require("./models/issueModel");
 
-app.use(express.json());
-app.use(cors());
+// --------- VALIDATION SCHEMAS ---------
+const userSchema = Joi.object({
+  name: Joi.string().min(2).max(50).trim().required(),
+  email: Joi.string().email().lowercase().trim().required(),
+  password: Joi.string().min(8).max(128).required()
+});
 
-// MongoDB Connection - Mongo uri exposure vulnerability fixed by Kasundi
-mongoose.connect(process.env.MONGO_URI)
-.then(() => console.log("MongoDB Connected"))
-.catch((err) => console.error("MongoDB Connection Error:", err));
+const loginSchema = Joi.object({
+  email: Joi.string().email().lowercase().trim().required(),
+  password: Joi.string().required()
+});
 
-//API Creation
+const productSchema = Joi.object({
+  name: Joi.string().min(2).max(100).trim().required(),
+  category: Joi.string().min(2).max(50).trim().required(),
+  brand: Joi.string().min(2).max(50).trim().required(),
+  image: Joi.string().uri().required(),
+  new_price: Joi.number().positive().required(),
+  old_price: Joi.number().positive().required(),
+  description: Joi.string().max(500).trim().required(),
+  quantity: Joi.number().integer().min(0).required()
+});
 
-app.get("/",(req, res) =>{
-    res.send("Express App is running")
-})
+const orderSchema = Joi.object({
+  fullName: Joi.string().min(2).max(100).trim().required(),
+  email: Joi.string().email().lowercase().trim().required(),
+  address: Joi.string().min(10).max(200).trim().required(),
+  contact: Joi.string().pattern(/^[0-9+\-\s()]+$/).min(10).max(15).required(),
+  paymentMethod: Joi.string().valid("cash", "card", "online").required(),
+  items: Joi.array().items(Joi.object()).min(1).required(),
+  totalAmount: Joi.number().positive().required()
+});
 
-// Image Storage Engine
+const bookingSchema = Joi.object({
+  ownerName: Joi.string().min(2).max(100).trim().required(),
+  email: Joi.string().email().lowercase().trim().required(),
+  phone: Joi.string().pattern(/^[0-9+\-\s()]+$/).min(10).max(15).required(),
+  specialNotes: Joi.string().max(500).trim().allow(""),
+  location: Joi.string().min(5).max(100).trim().required(),
+  serviceType: Joi.string().min(2).max(50).trim().required(),
+  vehicleModel: Joi.string().min(2).max(50).trim().required(),
+  vehicleNumber: Joi.string().min(2).max(20).trim().required(),
+  date: Joi.date().min("now").required(),
+  time: Joi.string().pattern(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/).required()
+});
 
+const serviceSchema = Joi.object({
+  serviceTitle: Joi.string().min(2).max(100).trim().required(),
+  details: Joi.string().max(500).trim().allow(""),
+  estimatedHour: Joi.string().min(1).max(20).trim().required(),
+  image: Joi.string().uri().required()
+});
+
+const customerSchema = Joi.object({
+  customerID: Joi.string().min(2).max(20).trim().required(),
+  name: Joi.string().min(2).max(100).trim().required(),
+  NIC: Joi.string().pattern(/^[0-9]{9}[vVxX]|[0-9]{12}$/).required(),
+  address: Joi.string().min(10).max(200).trim().required(),
+  contactno: Joi.string().pattern(/^[0-9+\-\s()]+$/).min(10).max(15).required(),
+  email: Joi.string().email().lowercase().trim().required(),
+  vType: Joi.string().min(2).max(20).trim().required(),
+  vName: Joi.string().min(2).max(50).trim().required(),
+  Regno: Joi.string().min(2).max(20).trim().required(),
+  vColor: Joi.string().min(2).max(20).trim().required(),
+  vFuel: Joi.string().min(2).max(20).trim().required()
+});
+
+const issueSchema = Joi.object({
+  cid: Joi.string().min(2).max(20).trim().required(),
+  Cname: Joi.string().min(2).max(100).trim().required(),
+  Cnic: Joi.string().pattern(/^[0-9]{9}[vVxX]|[0-9]{12}$/).required(),
+  Ccontact: Joi.string().pattern(/^[0-9+\-\s()]+$/).min(10).max(15).required(),
+  Clocation: Joi.string().min(5).max(100).trim().required(),
+  Cstatus: Joi.string().valid("pending", "in_progress", "resolved", "closed").required()
+});
+
+// --------- HELPERS ---------
+function pick(obj, allowed = []) {
+  const out = {};
+  allowed.forEach(k => { if (obj[k] !== undefined) out[k] = obj[k]; });
+  return out;
+}
+
+function getTokenFromReq(req) {
+  const h = req.headers.authorization || "";
+  if (h.startsWith("Bearer ")) return h.slice(7);
+  return req.header("auth-token") || null;
+}
+
+function requireJwtAuth(req, res, next) {
+  try {
+    const token = getTokenFromReq(req);
+    if (!token) return res.status(401).json({ message: "Auth required" });
+    const payload = jwt.verify(token, JWT_SECRET);
+    const u = payload?.user || payload?.User || payload?.Admin || payload?.admin || payload;
+    if (!u) return res.status(401).json({ message: "Invalid token" });
+    req.user = {
+      id: u._id || u.id,
+      email: u.email,
+      name: u.name,
+      role: Array.isArray(u.role) ? u.role[0] : u.role || (u.isAdmin ? "admin" : "user") || "user",
+    };
+    next();
+  } catch (e) {
+    return res.status(401).json({ message: "Invalid/expired token" });
+  }
+}
+
+function hasRole(roles = []) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ message: "Auth required" });
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({ message: "Forbidden: insufficient role" });
+    }
+    next();
+  };
+}
+
+// --------- STATIC / HEALTH ---------
+app.get("/", (req, res) => {
+  res.send("Express App is running");
+});
+
+// --------- UPLOADS ---------
 const storage = multer.diskStorage({
-    destination: './upload/images',
-    filename:(req,file,cb)=>{
-        return cb(null, `${file.fieldname}_${Date.now()}${path.extname(file.originalname)}`)
-    }
-})
+  destination: "./upload/images",
+  filename: (req, file, cb) => cb(null, `${file.fieldname}_${Date.now()}${path.extname(file.originalname)}`)
+});
+const upload = multer({
+  storage,
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowedMimes = ["image/jpeg", "image/jpg", "image/png"];
+    const allowedExts = [".jpg", ".jpeg", ".png"];
+    if (!allowedMimes.includes(file.mimetype)) return cb(new Error("Invalid file type"), false);
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (!allowedExts.includes(ext)) return cb(new Error("Invalid file extension"), false);
+    cb(null, true);
+  }
+});
+app.use("/images", express.static("upload/images"));
 
-const upload = multer({storage:storage})
-
-//Creating upload endpoint for images
-app.use('/images',express.static('upload/images'))
-
-app.post("/upload",upload.single('product'),(req,res)=>{
-    res.json({
-        success:1,
-        image_url:`http://localhost:${port}/images/${req.file.filename}`
-    })
-})
-
-app.post('/addproduct', async (req,res)=>{
-    try {
-        const products = await Product.find({});
-        let id = 1;
-
-        if(products.length > 0) {
-            const lastProduct = products[products.length - 1];
-            id = lastProduct.id + 1;
-        }
-
-        const product = new Product({
-            id: id,
-            name: req.body.name,
-            category: req.body.category,
-            brand: req.body.brand,
-            image: req.body.image,
-            new_price: req.body.new_price,
-            old_price: req.body.old_price,
-            description: req.body.description,
-            quantity: Number(req.body.quantity),
-        });
-
-        console.log(product);
-        await product.save();
-        console.log("Saved");
-        res.json({
-            success: true,
-            name: req.body.name,
-        });
-    } catch (error) {
-        console.error("Error while adding product:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
-    }
-})
-
-
-// Creating API for deleting Product
-
-app.post('/removeproduct',async (req,res)=>{
-    await Product.findOneAndDelete({id:req.body.id});
-    console.log("Removed");
-    res.json({
-        success:true,
-        name:req.body.name,
-    })
-})
-
-// Creating API for getting all products
-
-app.get('/allproducts',async (req, res)=>{
-    let products = await Product.find({})
-    console.log("All Products Fetched");
-    res.send(products);
-})
-
-app.listen(port,(error)=>{
-    if(!error){
-        console.log("Server Running on Port " + process.env.PORT)
-    }else{
-        console.log("Error : " + error)
-    }
-})
-
-// Creating API for update product
-app.put('/updateproduct/:id', async (req, res) => {
-    try {
-        const productId = req.params.id;
-
-        const product = await Product.findOne({ id: productId });
-
-        if (!product) {
-            return res.status(404).json({ success: false, error: 'Product not found' });
-        }
-
-        product.name = req.body.name || product.name;
-        product.category = req.body.category || product.category;
-        product.brand = req.body.brand || product.brand;
-        product.image = req.body.image || product.image;
-        product.new_price = req.body.new_price || product.new_price;
-        product.old_price = req.body.old_price || product.old_price;
-        product.description = req.body.description || product.description;
-        product.quantity = req.body.quantity || product.quantity;
-
-        await product.save();
-
-        console.log("Updated Product:", product);
-        res.json({ success: true, product });
-    } catch (error) {
-        console.error("Error while updating product:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
-    }
+app.post("/upload", upload.single("product"), (req, res) => {
+  const proto = req.headers["x-forwarded-proto"] || req.protocol;
+  const host = req.get("host");
+  res.json({ success: 1, image_url: `${proto}://${host}/images/${req.file.filename}` });
 });
 
-// Creating API for getting a specific product by ID
-app.get('/product/:id', async (req, res) => {
-    try {
-        const productId = req.params.id;
-        
-        // Find the product by ID
-        const product = await Product.findOne({ id: productId });
-
-        if (!product) {
-            return res.status(404).json({ success: false, error: 'Product not found' });
-        }
-
-        res.json({ success: true, product });
-    } catch (error) {
-        console.error("Error while fetching product:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
-    }
+// --------- EMAIL TRANSPORT ---------
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: { user: EMAIL_ADD, pass: EMAIL_PW }
 });
 
-app.get('/lowStockProducts', async (req, res) => {
-    try {
-        let products = await Product.find({});
-        
-        // Filter products with quantity less than 2
-        const lowStockProducts = products.filter(product => product.quantity < 3);
+// --------- GOOGLE OPENID CONNECT (sessions, PKCE) ---------
+let oidcClient;
+async function getOidcClient() {
+  if (oidcClient) return oidcClient;
+  const issuer = await Issuer.discover(OIDC_ISSUER);
+   console.log("Discovered issuer:", issuer.issuer);
+  oidcClient = new issuer.Client({
+    client_id: OIDC_CLIENT_ID,
+    client_secret: OIDC_CLIENT_SECRET,
+    redirect_uris: [OIDC_REDIRECT_URI],
+    response_types: ["code"],
+    token_endpoint_auth_method: "client_secret_basic",
+  });
+  return oidcClient;
+}
 
-        if (lowStockProducts.length > 0) {
-            // Send a notification or flag to indicate low stock products
-            res.json({ success: true, products, lowStockProducts });
-        } else {
-            res.json({ success: true, products });
-        }
-    } catch (error) {
-        console.error("Error while fetching all products:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
-    }
+app.get("/auth/login", async (req, res, next) => {
+  try {
+    const c = await getOidcClient();
+    const state = generators.state();
+    const code_verifier = generators.codeVerifier();
+    const code_challenge = generators.codeChallenge(code_verifier);
+
+    req.session.oidc = { state, code_verifier };
+    req.session.save(err => {
+      if (err) return next(err);
+      const url = c.authorizationUrl({
+        scope: "openid profile email",
+        response_type: "code",
+        code_challenge,
+        code_challenge_method: "S256",
+        state,
+      });
+      res.redirect(url);
+    });
+  } catch (e) { next(e); }
 });
 
-app.get('/processingOrdersCount', async (req, res) => {
-    try {
-        let orders = await Order.find({});
+app.get("/auth/callback", async (req, res, next) => {
+  try {
+    const c = await getOidcClient();
+    const params = c.callbackParams(req);
+    const { state, code_verifier } = req.session.oidc || {};
+    if (!state || !code_verifier) return res.status(400).send("Missing PKCE session");
 
-        const processingOrdersCount = orders.filter(Order => Order.status === 'processing');
+    const tokenSet = await c.callback(OIDC_REDIRECT_URI, params, { state, code_verifier });
+    const claims = tokenSet.claims();
 
-        if (processingOrdersCount.length > 0) {
-            res.json({ success: true, orders, processingOrdersCount });
-        } else {
-            res.json({ success: true, orders });
-        }
-    } catch (error) {
-        console.error("Error while fetching processing orders:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
-    }
+    req.session.user = {
+      sub: claims.sub,
+      name: claims.name || claims.preferred_username || claims.email,
+      email: claims.email,
+      picture: claims.picture,
+    };
+    req.session.tokens = {
+      access_token: tokenSet.access_token,
+      refresh_token: tokenSet.refresh_token,
+      expires_at: tokenSet.expires_at,
+    };
+    delete req.session.oidc;
+
+    res.redirect(`${FRONTEND_ORIGIN}/login?status=success`);
+  } catch (e) { next(e); }
 });
 
-app.post('/signup',async (req,res) =>{
+app.get("/auth/me", (req, res) => {
+  if (!req.session.user) return res.status(401).json({ error: "unauthenticated" });
+  res.json({ user: req.session.user });
+});
 
-    let check = await Users.findOne({email:req.body.email});
-    if(check){
-        return res.status(400).json({success:false,errors:"eixsting user found with same email address"})
+app.post("/auth/logout", (req, res) => {
+  req.session.destroy(() => {
+    res.clearCookie("sid");
+    res.json({ ok: true });
+  });
+});
 
-    }
-    let cart = {};
-    for (let i = 0; i < 300; i++){
-        cart[i]=0;
-    }
-    const user = new Users({
-        name:req.body.name,
-        email:req.body.email,
-        password:req.body.password,
-        cartData:cart,
-    })
+// Helper to protect with session
+function ensureSessionAuth(req, res, next) {
+  if (req.session && req.session.user) return next();
+  return res.status(401).json({ error: "unauthenticated" });
+}
 
+// Alias: session-protected sample
+app.get("/api/me", ensureSessionAuth, (req, res) => {
+  res.json({ user: req.session.user });
+});
+
+// --------- GOOGLE OAUTH2 (no OIDC) ---------
+const oauthClient = new OAuth2Client(OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_REDIRECT_URI);
+const oauthScopes = [
+  "openid",
+  "profile",
+  "email",
+  "https://www.googleapis.com/auth/userinfo.email",
+  "https://www.googleapis.com/auth/userinfo.profile",
+];
+
+app.get("/oauth/login", (req, res) => {
+  const url = oauthClient.generateAuthUrl({ access_type: "offline", scope: oauthScopes, prompt: "consent" });
+  res.redirect(url);
+});
+
+app.get("/oauth/callback", async (req, res, next) => {
+  try {
+    const { code } = req.query;
+    const { tokens } = await oauthClient.getToken(code);
+    // use Google's OpenID userinfo endpoint
+    const r = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+    const profile = await r.json();
+
+    req.session.user = {
+      sub: profile.sub,
+      name: profile.name || profile.email,
+      email: profile.email,
+      picture: profile.picture,
+    };
+    req.session.tokens = tokens;
+
+    res.redirect(`${FRONTEND_ORIGIN}/login?status=success`);
+  } catch (e) { next(e); }
+});
+
+app.get("/oauth/me", (req, res) => {
+  if (!req.session.user) return res.status(401).json({ error: "unauthenticated" });
+  res.json({ user: req.session.user });
+});
+
+app.post("/oauth/logout", (req, res) => {
+  req.session.destroy(() => {
+    res.clearCookie("sid");
+    res.json({ ok: true });
+  });
+});
+
+// --------- BUSINESS ROUTES (JWT protected as in your app) ---------
+
+// Products
+app.post("/addproduct", async (req, res) => {
+  try {
+    const { error, value } = productSchema.validate(req.body, { allowUnknown: false });
+    if (error) return res.status(400).json({ success: false, error: error.details[0].message });
+
+    const products = await Product.find({});
+    let id = products.length ? products[products.length - 1].id + 1 : 1;
+
+    const product = new Product({ id, ...value });
+    await product.save();
+
+    res.json({ success: true, name: value.name });
+  } catch (err) {
+    console.error("Error while adding product:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
+app.post("/removeproduct", async (req, res) => {
+  try {
+    const { error, value } = Joi.object({
+      id: Joi.number().integer().positive().required(),
+      name: Joi.string().min(1).max(100).trim().required()
+    }).validate(req.body, { allowUnknown: false });
+    if (error) return res.status(400).json({ success: false, error: error.details[0].message });
+
+    await Product.findOneAndDelete({ id: value.id });
+    res.json({ success: true, name: value.name });
+  } catch (err) {
+    console.error("Error while removing product:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
+app.get("/allproducts", requireJwtAuth, async (req, res) => {
+  const products = await Product.find({});
+  res.send(products);
+});
+
+app.put("/updateproduct/:id", async (req, res) => {
+  try {
+    const { error: idError, value: productId } = Joi.number().integer().positive().required().validate(req.params.id);
+    if (idError) return res.status(400).json({ success: false, error: "Invalid product ID" });
+
+    const { error, value } = productSchema.validate(req.body, { allowUnknown: false });
+    if (error) return res.status(400).json({ success: false, error: error.details[0].message });
+
+    const product = await Product.findOneAndUpdate({ id: productId }, value, { new: true, runValidators: true });
+    if (!product) return res.status(404).json({ success: false, error: "Product not found" });
+
+    res.json({ success: true, product });
+  } catch (err) {
+    console.error("Error while updating product:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
+app.get("/product/:id", async (req, res) => {
+  try {
+    const product = await Product.findOne({ id: req.params.id });
+    if (!product) return res.status(404).json({ success: false, error: "Product not found" });
+    res.json({ success: true, product });
+  } catch (err) {
+    console.error("Error while fetching product:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
+app.get("/lowStockProducts", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
+  try {
+    const products = await Product.find({});
+    const lowStockProducts = products.filter(p => p.quantity < 3);
+    if (lowStockProducts.length) return res.json({ success: true, products, lowStockProducts });
+    res.json({ success: true, products });
+  } catch (err) {
+    console.error("Error while fetching all products:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
+// Auth (JWT for your classic login/signup flows)
+app.post("/signup", async (req, res) => {
+  try {
+    const { error, value } = userSchema.validate(req.body, { allowUnknown: false });
+    if (error) return res.status(400).json({ success: false, errors: error.details[0].message });
+
+    const exists = await Users.findOne({ email: value.email });
+    if (exists) return res.status(400).json({ success: false, errors: "existing user found with same email address" });
+
+    const cart = Array.from({ length: 300 }).reduce((acc, _, i) => (acc[i] = 0, acc), {});
+    const user = new Users({ name: value.name, email: value.email, password: value.password, cartData: cart });
     await user.save();
 
-    const data ={
-        user:{
-            id:user.id
-        }
-    }
-
-    const token = jwt.sign(data, process.env.JWT_SECRET);
-    res.json({success:true,token})
-})
-
-
-// Route to handle admin signup
-app.post('/adminsignup', async (req, res) => {
-    try {
-        const { name, email, password, roles } = req.body;
-
-        // Check if admin with the same email already exists
-        const existingAdmin = await Admins.findOne({ email });
-
-        if (existingAdmin) {
-            return res.status(400).json({ success: false, errors: "An admin with this email already exists" });
-        }
-
-        // Create a new Admin document
-        const newAdmin = new Admin({
-            name,
-            email,
-            password,
-            role: roles || [],  // Assign roles array to 'role' field
-        });
-
-        // Save the newAdmin document to the database
-        await newAdmin.save();
-
-        // Prepare response data
-        const data = {
-            Admin: {
-                id: newAdmin._id,
-                name: newAdmin.name,
-                email: newAdmin.email,
-                role: newAdmin.role,
-            }
-        };
-
-        // Return success response with token (if needed)
-        res.json({ success: true, data });
-    } catch (error) {
-        console.error('Admin signup error:', error);
-        res.status(500).json({ success: false, errors: "Internal server error" });
-    }
+    const token = jwt.sign({ user: { id: user.id, email: user.email, name: user.name, role: "user" } }, JWT_SECRET, { expiresIn: "8h" });
+    res.json({ success: true, token });
+  } catch (err) {
+    console.error("Error during signup:", err);
+    res.status(500).json({ success: false, errors: "Internal server error" });
+  }
 });
 
-app.post('/login', async (req,res) => {
-    let user = await Users.findOne({email:req.body.email});
-    if(user){
-        const passCompare = req.body.password === user.password;
-        if(passCompare){
-            const data = {
-                user:{
-                    id: user.id
-                }
-            }
-            const token = jwt.sign(data, process.env.JWT_SECRET);
-            res.json({success:true,token});
-        }
+app.post("/login", async (req, res) => {
+  try {
+    const { error, value } = loginSchema.validate(req.body, { allowUnknown: false });
+    if (error) return res.status(400).json({ success: false, errors: error.details[0].message });
 
-        else{
-            res.json({success:false,errors:"Invalid credentials"});
-        }
-    }
-    else{
-        res.json({success:false,errors:"Invalid credentials"})
-    }
-})
+    const user = await Users.findOne({ email: value.email });
+    if (!user || value.password !== user.password) return res.json({ success: false, errors: "Invalid credentials" });
 
-app.post('/adminlogin', async (req,res) => {
-    let Admin = await Admins.findOne({email:req.body.email});
-    if(Admin){
-        const passCompare = req.body.password === Admin.password;
-        if(passCompare){
-            const data = {
-                Admin: {
-                    id: Admin._id,
-                    name: Admin.name,
-                    email: Admin.email,
-                    role: Admin.role,
-                }
-            };
-            const token = jwt.sign(data, process.env.JWT_SECRET);
-            res.json({success:true,token});
-        }
-        else{
-            res.json({success:false,errors:"Invalid credentials"});
-        }
-    }
-    else{
-        res.json({success:false,errors:"Invalid credentials"})
-    }
-})
-
-app.get('/newcollections', async (req,res) =>{
-    let products = await Product.find({});
-    let newcollection = products.slice(1).slice(-8);
-    console.log("NewCollection Fetched");
-    res.send(newcollection);
-})
-
-// jwt secret exposure vulnerability was fixed by kasundi
-const fetchUser = async (req,res,next)=>{
-    const token = req.header('auth-token');
-    if(!token){
-        res.status(401).send({errors:"please authenticate using valid token"})
-    }
-    else{
-        try{
-            const data = jwt.verify(token,process.env.JWT_SECRET);
-            req.user = data.user;
-            next();
-        } catch(error){
-            res.status(401).send({errors:"please authenticate using valid token"})
-        }
-    }
-}
-
-app.post('/addtocart', fetchUser, async (req, res) => {
-    try {
-        const itemId = Number(req.body.itemId);
-        if (isNaN(itemId)) {
-            return res.status(400).json({ success: false, error: 'Invalid item ID' });
-        }
-
-        const product = await Product.findOne({ id: itemId });
-
-        if (!product) {
-            return res.status(404).json({ success: false, error: 'Product not found' });
-        }
-
-        if (product.quantity <= 0) {
-            return res.status(400).json({ success: false, error: 'Product out of stock' });
-        }
-
-        product.quantity -= 1;
-        await product.save();
-
-        console.log("Added", itemId);
-
-        let userData = await Users.findOne({ _id: req.user.id });
-        userData.cartData[itemId] += 1;
-        await Users.findOneAndUpdate({ _id: req.user.id }, { cartData: userData.cartData });
-        
-        res.json({ success: true, message: "Item added to cart successfully" });
-    } catch (error) {
-        console.error("Error while adding item to cart:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
-    }
+    const token = jwt.sign({ user: { id: user.id, email: user.email, name: user.name, role: "user" } }, JWT_SECRET, { expiresIn: "8h" });
+    res.json({ success: true, token });
+  } catch (err) {
+    console.error("Error during login:", err);
+    res.status(500).json({ success: false, errors: "Internal server error" });
+  }
 });
 
+app.post("/adminlogin", async (req, res) => {
+  try {
+    const { error, value } = loginSchema.validate(req.body, { allowUnknown: false });
+    if (error) return res.status(400).json({ success: false, errors: error.details[0].message });
 
-app.post('/removefromcart', fetchUser, async (req, res) => {
-    try {
-        const itemId = Number(req.body.itemId);
+    const admin = await Admins.findOne({ email: value.email });
+    if (!admin || value.password !== admin.password) return res.json({ success: false, errors: "Invalid credentials" });
 
-        if (isNaN(itemId)) {
-            return res.status(400).json({ success: false, error: 'Invalid item ID' });
-        }
-
-        let userData = await Users.findOne({ _id: req.user.id });
-
-
-        if (userData.cartData[itemId] > 0) {
-
-            userData.cartData[itemId] -= 1;
-            
-            const product = await Product.findOne({ id: itemId });
-
-
-            product.quantity += 1;
-
-            await product.save();
-
-            await Users.findOneAndUpdate({ _id: req.user.id }, { cartData: userData.cartData });
-
-            console.log("Removed", itemId);
-            res.json({ success: true, message: "Item removed from cart successfully" });
-        } else {
-            res.status(400).json({ success: false, error: "Item not found in cart" });
-        }
-    } catch (error) {
-        console.error("Error while removing item from cart:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
-    }
+    const token = jwt.sign({ user: { id: admin._id, email: admin.email, name: admin.name, role: "admin" } }, JWT_SECRET, { expiresIn: "8h" });
+    res.json({ success: true, token });
+  } catch (err) {
+    console.error("Error during admin login:", err);
+    res.status(500).json({ success: false, errors: "Internal server error" });
+  }
 });
 
+// Cart (JWT middleware)
+app.post("/addtocart", requireJwtAuth, async (req, res) => {
+  try {
+    const itemId = Number(req.body.itemId);
+    if (isNaN(itemId)) return res.status(400).json({ success: false, error: "Invalid item ID" });
 
-app.post('/getcart',fetchUser,async (req,res) =>{
-    console.log("GetCart");
-    let userData = await Users.findOne({_id:req.user.id});
-    res.json(userData.cartData)
-})
+    const product = await Product.findOne({ id: itemId });
+    if (!product) return res.status(404).json({ success: false, error: "Product not found" });
+    if (product.quantity <= 0) return res.status(400).json({ success: false, error: "Product out of stock" });
 
-// Function to generate a unique order ID
+    product.quantity -= 1;
+    await product.save();
+
+    const userData = await Users.findOne({ _id: req.user.id });
+    userData.cartData[itemId] = (userData.cartData[itemId] || 0) + 1;
+    await Users.findOneAndUpdate({ _id: req.user.id }, { cartData: userData.cartData });
+
+    res.json({ success: true, message: "Item added to cart successfully" });
+  } catch (err) {
+    console.error("Error while adding item to cart:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
+app.post("/removefromcart", requireJwtAuth, async (req, res) => {
+  try {
+    const itemId = Number(req.body.itemId);
+    if (isNaN(itemId)) return res.status(400).json({ success: false, error: "Invalid item ID" });
+
+    const userData = await Users.findOne({ _id: req.user.id });
+    if ((userData.cartData[itemId] || 0) > 0) {
+      userData.cartData[itemId] -= 1;
+
+      const product = await Product.findOne({ id: itemId });
+      product.quantity += 1;
+      await product.save();
+
+      await Users.findOneAndUpdate({ _id: req.user.id }, { cartData: userData.cartData });
+      res.json({ success: true, message: "Item removed from cart successfully" });
+    } else {
+      res.status(400).json({ success: false, error: "Item not found in cart" });
+    }
+  } catch (err) {
+    console.error("Error while removing item from cart:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
+app.post("/getcart", requireJwtAuth, async (req, res) => {
+  const userData = await Users.findOne({ _id: req.user.id });
+  res.json(userData.cartData);
+});
+
+// Orders
 function generateOrderId() {
-    // Generate a random string of characters for the order ID
-    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    const length = 8;
-    let orderId = '';
-    for (let i = 0; i < length; i++) {
-        orderId += characters.charAt(Math.floor(Math.random() * characters.length));
-    }
-    return orderId;
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  return Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
 }
 
-const getDefaultCart = () =>{
-    let cart = {};
-    for (let index = 0; index < 300 + 1; index++){
-        cart[index]=0;
-    }
-    return cart;
-}
-
-const clearCart = async (userId) => {
-    try {
-        const defaultCart = getDefaultCart();
-        await Users.findByIdAndUpdate(userId, {cartData : defaultCart });
-        console.log("Cart cleared for user:", userId);
-    } catch (error) {
-        console.error("Error while clearing cart:", error);
-    }
+const getDefaultCart = () => {
+  const cart = {};
+  for (let i = 0; i <= 300; i++) cart[i] = 0;
+  return cart;
 };
 
-// email and password exposure vulnerability was fixed by kasundi
-// Create a transporter using SMTP transport
-const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-        user: process.env.EMAIL_ADD, 
-        pass: process.env.EMAIL_PW
-    }
+const clearCart = async (userId) => {
+  try {
+    const defaultCart = getDefaultCart();
+    await Users.findByIdAndUpdate(userId, { cartData: defaultCart });
+  } catch (e) {
+    console.error("Error while clearing cart:", e);
+  }
+};
+
+app.post("/checkout", requireJwtAuth, async (req, res) => {
+  try {
+    const { error, value } = orderSchema.validate(req.body, { allowUnknown: false });
+    if (error) return res.status(400).json({ success: false, error: error.details[0].message });
+
+    const { fullName, email, address, contact, paymentMethod, items, totalAmount } = value;
+    const orderId = generateOrderId();
+
+    const order = new Order({ orderId, fullName, email, address, contact, paymentMethod, items, totalAmount });
+    await order.save();
+
+    await clearCart(req.user.id);
+
+    const mailOptions = {
+      from: EMAIL_ADD,
+      to: email,
+      subject: "Order Confirmation",
+      text: `Dear ${fullName},\n\nYour order (${orderId}) has been successfully placed.\n\nTotal Amount:- Rs.${totalAmount}\nPayment Method:- ${paymentMethod}\nDate:- ${new Date(order.orderDate).toLocaleDateString()}\n\nThank you for shopping with us!`,
+    };
+    await transporter.sendMail(mailOptions);
+
+    res.json({ success: true, orderId });
+  } catch (err) {
+    console.error("Error while saving order:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
 });
 
-app.post('/checkout',fetchUser, async (req, res) => {
-    try {
-
-        const { fullName, email, address, contact, paymentMethod, items, totalAmount } = req.body;
-
-        const orderId = generateOrderId();
-
-        const order = new Order({
-            orderId,
-            fullName,
-            email,
-            address,
-            contact,
-            paymentMethod,
-            items,
-            totalAmount,
-        });
-
-        await order.save();
-
-        const userId = req.user.id;
-
-        await clearCart(userId);
-        
-        const mailOptions = {
-            from: 'pprajeshvara@gmail.com',
-            to: email,
-            subject: 'Order Confirmation',
-            text: `Dear ${fullName},\n\nYour order (${orderId}) has been successfully placed.\n\nTotal Amount:- Rs.${totalAmount}\nPayment Method:- ${paymentMethod}\nDate:- ${new Date(order.orderDate).toLocaleDateString()}\n\nThank you for shopping with us!`, // Email body
-        };
-
-        // Send the email
-        await transporter.sendMail(mailOptions);
-
-        res.json({ success: true, orderId });
-    } catch (error) {
-        console.error("Error while saving order:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
-    }
+app.get("/product/quantity/:id", async (req, res) => {
+  try {
+    const product = await Product.findOne({ id: req.params.id });
+    if (!product) return res.status(404).json({ success: false, error: "Product not found" });
+    res.json({ success: true, quantity: product.quantity });
+  } catch (err) {
+    console.error("Error while fetching product quantity:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
 });
 
-// Creating API for getting the quantity of a specific product
-app.get('/product/quantity/:id', async (req, res) => {
-    try {
-        const productId = req.params.id;
-
-        const product = await Product.findOne({ id: productId });
-
-        if (!product) {
-            return res.status(404).json({ success: false, error: 'Product not found' });
-        }
-
-        res.json({ success: true, quantity: product.quantity });
-    } catch (error) {
-        console.error("Error while fetching product quantity:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
-    }
+app.get("/orders", requireJwtAuth, async (req, res) => {
+  try {
+    const query = req.user.role === "admin" ? {} : { userId: req.user.id };
+    const orders = await Order.find(query);
+    res.json({ success: true, orders });
+  } catch (err) {
+    console.error("Error while fetching orders:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
 });
 
-// Define route for fetching all orders data
-app.get('/orders', async (req, res) => {
-    try {
-
-        const orders = await Order.find({});
-
-        res.json({ success: true, orders });
-    } catch (error) {
-        console.error("Error while fetching orders:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
-    }
+app.delete("/order/:id", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
+  try {
+    const deletedOrder = await Order.findOneAndDelete({ orderId: req.params.id });
+    if (!deletedOrder) return res.status(404).json({ success: false, error: "Order not found" });
+    res.json({ success: true, message: "Order deleted successfully" });
+  } catch (err) {
+    console.error("Error while deleting order:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
 });
 
-// Define route for delete order
-app.delete('/order/:id', async (req, res) => {
-    try {
-        const orderId = req.params.id;
-        const deletedOrder = await Order.findOneAndDelete({ orderId });
-        if (!deletedOrder) {
-            return res.status(404).json({ success: false, error: 'Order not found' });
-        }
+app.put("/order/:id", async (req, res) => {
+  try {
+    const orderId = req.params.id;
+    const newStatus = req.body.status;
+    const updatedOrder = await Order.findOneAndUpdate({ orderId }, { status: newStatus }, { new: true });
+    if (!updatedOrder) return res.status(404).json({ success: false, error: "Order not found" });
 
-        res.json({ success: true, message: 'Order deleted successfully' });
-    } catch (error) {
-        console.error("Error while deleting order:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
-    }
+    res.json({ success: true, order: updatedOrder });
+
+    const { fullName, email } = updatedOrder;
+    const mailOptions = {
+      from: EMAIL_ADD,
+      to: email,
+      subject: "Order Shipped",
+      text: `Dear ${fullName},\n\nYour order (${orderId}) has been shipped. Thank you for shopping with us!`,
+    };
+    await transporter.sendMail(mailOptions);
+  } catch (err) {
+    console.error("Error while updating order status:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
 });
 
-// Define route for updating order status
-app.put('/order/:id', async (req, res) => {
-    try {
-        const orderId = req.params.id;
-        const newStatus = req.body.status;
-        const updatedOrder = await Order.findOneAndUpdate(
-            { orderId: orderId },
-            { status: newStatus },
-            { new: true }
-        );
-
-        if (!updatedOrder) {
-            return res.status(404).json({ success: false, error: 'Order not found' });
-        }
-        
-        res.json({ success: true, order: updatedOrder });
-
-        const { fullName, email } = updatedOrder;
-
-        const mailOptions = {
-            from: 'pprajeshvara@gmail.com',
-            to: email,
-            subject: 'Order Shipped',
-            text: `Dear ${fullName},\n\nYour order (${orderId}) has been shipped. Thank you for shopping with us!`,
-        };
-
-        // Send the email
-        await transporter.sendMail(mailOptions);
-        
-    } catch (error) {
-        console.error("Error while updating order status:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
-    }
+app.get("/processingOrders", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
+  try {
+    const processingOrdersCount = await Order.countDocuments({ status: "processing" });
+    res.json({ success: true, processingOrdersCount });
+  } catch (err) {
+    console.error("Error while fetching processing orders count:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
 });
 
-app.get('/processingOrders', async (req, res) => {
-    try {
-        const processingOrdersCount = await Order.countDocuments({ status: 'processing' });
-        res.json({ success: true, processingOrdersCount });
-    } catch (error) {
-        console.error("Error while fetching processing orders count:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
-    }
+app.get("/shippedOrders", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
+  try {
+    const shippedOrdersCount = await Order.countDocuments({ status: "shipped" });
+    res.json({ success: true, shippedOrdersCount });
+  } catch (err) {
+    console.error("Error while fetching shipped orders count:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
 });
 
-app.get('/shippedOrders', async (req, res) => {
-    try {
-        const shippedOrdersCount = await Order.countDocuments({ status: 'shipped' });
-        res.json({ success: true, shippedOrdersCount });
-    } catch (error) {
-        console.error("Error while fetching shipped orders count:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
-    }
+app.get("/totalAmountOfOrders", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
+  try {
+    const orders = await Order.find({});
+    const totalAmountOfOrders = orders.reduce((total, o) => total + o.totalAmount, 0);
+    res.json({ success: true, totalAmountOfOrders });
+  } catch (err) {
+    console.error("Error while fetching total amount of all orders:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
 });
 
-// Creating API to get the total amount of all orders
-app.get('/totalAmountOfOrders', async (req, res) => {
-    try {
-        // Fetch all orders
-        const orders = await Order.find({});
-
-        // Calculate total amount by summing up 'totalAmount' field of each order
-        const totalAmountOfOrders = orders.reduce((total, order) => total + order.totalAmount, 0);
-
-        res.json({ success: true, totalAmountOfOrders });
-    } catch (error) {
-        console.error("Error while fetching total amount of all orders:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
-    }
+app.get("/deliveredOrders", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
+  try {
+    const deliveredOrdersCount = await Order.countDocuments({ status: "delivered" });
+    res.json({ success: true, deliveredOrdersCount });
+  } catch (err) {
+    console.error("Error while fetching delivered orders count:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
 });
 
-
-app.get('/deliveredOrders', async (req, res) => {
-    try {
-        const deliveredOrdersCount = await Order.countDocuments({ status: 'delivered' });
-        res.json({ success: true, deliveredOrdersCount });
-    } catch (error) {
-        console.error("Error while fetching delivered orders count:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
-    }
+app.get("/totalAmountOfDelivered", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
+  try {
+    const delivered = await Order.find({ status: "delivered" });
+    const totalAmountOfDeliveredOrders = delivered.reduce((t, o) => t + o.totalAmount, 0);
+    res.json({ success: true, totalAmountOfDeliveredOrders });
+  } catch (err) {
+    console.error("Error while fetching total amount of delivered orders:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
 });
 
-// Creating API to get the total amount of all orders
-app.get('/totalAmountOfOrders', async (req, res) => {
-    try {
-        // Fetch all orders
-        const orders = await Order.find({});
-
-        // Calculate total amount by summing up 'totalAmount' field of each order
-        const totalAmountOfOrders = orders.reduce((total, order) => total + order.totalAmount, 0);
-
-        res.json({ success: true, totalAmountOfOrders });
-    } catch (error) {
-        console.error("Error while fetching total amount of all orders:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
-    }
+app.get("/totalAmountOfPending", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
+  try {
+    const pending = await Order.find({ status: { $in: ["shipped", "processing"] } });
+    const totalAmountOfPending = pending.reduce((t, o) => t + o.totalAmount, 0);
+    res.json({ success: true, totalAmountOfPending });
+  } catch (err) {
+    console.error("Error while fetching total amount of pending orders:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
 });
 
-app.get('/totalAmountOfDelivered', async (req, res) => {
-    try {
-        // Fetch orders with status 'delivered'
-        const deliveredOrders = await Order.find({ status: 'delivered' });
-
-        // Calculate total amount by summing up 'totalAmount' field of each delivered order
-        const totalAmountOfDeliveredOrders = deliveredOrders.reduce((total, order) => total + order.totalAmount, 0);
-
-        res.json({ success: true, totalAmountOfDeliveredOrders });
-    } catch (error) {
-        console.error("Error while fetching total amount of delivered orders:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
-    }
+// New collections
+app.get("/newcollections", requireJwtAuth, async (req, res) => {
+  const products = await Product.find({});
+  const newcollection = products.slice(1).slice(-8);
+  res.send(newcollection);
 });
 
-app.get('/totalAmountOfPending', async (req, res) => {
-    try {
-        // Fetch orders with status 'shipped' or 'processing'
-        const pendingOrders = await Order.find({ status: { $in: ['shipped', 'processing'] } });
-
-        // Calculate total amount by summing up 'totalAmount' field of each pending order
-        const totalAmountOfPending = pendingOrders.reduce((total, order) => total + order.totalAmount, 0);
-
-        res.json({ success: true, totalAmountOfPending });
-    } catch (error) {
-        console.error("Error while fetching total amount of pending orders:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
-    }
+// Bookings
+app.post("/addbooking", requireJwtAuth, async (req, res) => {
+  try {
+    const { error, value } = bookingSchema.validate(req.body, { allowUnknown: false });
+    if (error) return res.status(400).json({ error: error.details[0].message });
+    const allowed = pick(value, ["ownerName","email","phone","specialNotes","location","serviceType","vehicleModel","vehicleNumber","date","time"]);
+    const newBooking = new Booking(allowed);
+    await newBooking.save();
+    res.status(201).json({ message: "Booking saved successfully" });
+  } catch (err) {
+    console.error("Error saving booking:", err);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
+app.put("/updateBookingStatus2/:id", async (req, res) => {
+  try {
+    const { error, value } = Joi.object({
+      status: Joi.string().valid("pending","accepted","in_progress","completed","cancelled").required()
+    }).validate(req.body, { allowUnknown: false });
+    if (error) return res.status(400).json({ error: error.details[0].message });
 
+    const updatedBooking = await Booking.findByIdAndUpdate(
+      req.params.id,
+      { $set: { status: value.status } },
+      { new: true, runValidators: true }
+    );
+    if (!updatedBooking) return res.status(404).json({ error: "Booking not found" });
 
-
-//Pathum,s Booking routes
-
-const Booking = require('./models/BookingModel');
-
-app.post('/addbooking', async (req, res) => {
-    try {
-      // Extract form data from request body
-      const formData = req.body;
-  
-      // Create a new booking instance
-      const newBooking = new Booking(formData);
-  
-      // Save the booking to the database
-      await newBooking.save();
-      console.log("booking added");
-  
-      res.status(201).json({ message: 'Booking saved successfully' });
-    } catch (error) {
-      console.error('Error saving booking:', error);
-      res.status(500).json({ error: 'Server error' });
-    }
-  });
-
-
-  const sendEmail = require('./email');
-
-  // Update booking status route
-app.put('/updateBookingStatus2/:id', async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { status } = req.body;
-
-        const updatedBooking = await Booking.findByIdAndUpdate(
-            id,
-            { $set: { status } }, // Update status
-            { new: true }
-        );
-        if (updatedBooking.status === 'accepted') {
-            const { email } = updatedBooking;
-            const subject = 'Booking Accepted';
-            const text = 'We are excited to confirm your booking! Your service request has been accepted. We look forward to serving you on Booking Date at Booking Time. Should you have any questions, feel free to reach out. Thank you for choosing us.';
-      
-            await sendEmail(email, subject, text);
-          }
-
-        if (!updatedBooking) {
-            return res.status(404).json({ error: 'Booking not found' });
-        }
-
-        res.status(200).json({ message: 'Booking status updated successfully', updatedBooking });
-    } catch (error) {
-        console.error('Error updating booking status:', error);
-        res.status(500).json({ error: 'Server error' });
-    }
-});
-  
-
-    // Update booking details route
-    app.put('/updateBookingDetails/:id', async (req, res) => {
-        try {
-          const { id } = req.params;
-          const updatedBooking = await Booking.findByIdAndUpdate(
-            id,
-            req.body, // Update booking details
-            { new: true }
-          );
-    
-        if (!updatedBooking) {
-          return res.status(404).json({ error: 'Booking not found' });
-        }
-        res.status(200).json({ message: 'Booking details updated successfully', updatedBooking });
-        } catch (error) {
-        console.error('Error updating booking details:', error);
-        res.status(500).json({ error: 'Server error' });
-        }
-        }); 
-    
-    //get all booking details
-    app.get('/allBookingRequest', async (req, res) => {
-        try {
-            const data = await Booking.find();
-            res.json(data);
-            console.log("All Booking Requests Fetched");
-    
-        } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: 'Server error' });
-        }
-        }
-    );  
-        
-    //pathum's Service Routes
-
-const Service = require('./models/ServiceModel');
-
-// POST route for adding a new service
-app.post('/addservice', upload.single('image'), async (req, res) => {
-    try {
-        // Create new service object
-        const newService = new Service({
-            serviceTitle: req.body.serviceTitle,
-            estimatedHour: req.body.estimatedHour,
-            details: req.body.details,
-            imagePath: req.body.image, // Save image path
-        });
-        // Save the service to MongoDB
-        await newService.save();
-        res.json({
-            success: true,
-            name: req.body.name,
-        });
-    } catch (error) {
-        console.error('Error adding service:', error);
-        res.status(500).json({ error: 'An error occurred while adding the service' });
-    }
-});
-
-// 3. Create API endpoint to retrieve data
-app.get('/allServices', async (req, res) => {
-    try {
-      const data = await Service.find();
-      res.json(data);
-      console.log("All Booking Requests Fetched");
-
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: 'Server error' });
-    }
-  });
-
-
-  // Define route for deleting booking requests
-app.delete('/deleteBookingRequest/:id', async (req, res) => {
-    const requestId = req.params.id;
-  
-    try {
-      // Find the booking request by ID and delete it
-      await Booking.findByIdAndDelete(requestId);
-      res.status(200).send('Booking request deleted successfully');
-    } catch (error) {
-      console.error('Error deleting booking request:', error);
-      res.status(500).send('Internal server error');
-    }
-  });
-  
-  
-  
-  // Define route for deleting Services
-app.delete('/deleteServices/:id', async (req, res) => {
-    const requestId = req.params.id;
-  
-    try {
-      // Find the Services by ID and delete it
-      await Service.findByIdAndDelete(requestId);
-      res.status(200).send('Booking request deleted successfully');
-    } catch (error) {
-      console.error('Error deleting booking request:', error);
-      res.status(500).send('Internal server error');
-    }
-  });
-
-  // Add a new route to handle service updates
-app.put('/updateservice/:id', async (req, res) => {
-    try {
-        const { id } = req.params;
-        const updatedService = req.body;
-
-        // Find and update the service in the database
-        await Service.findByIdAndUpdate(id, updatedService);
-        console.log("Service updated");
-
-        res.status(200).json({ message: 'Service updated successfully' });
-    } catch (error) {
-        console.error('Error updating Service:', error);
-        res.status(500).json({ error: 'Server error' });
-    }
-});
-
-  //Ruwindi routes
-  const Issue = require('./models/issueModel');
-const Admin = require("./models/OnlineShopModels/Admin");
-
-  //Route for save new Issue
-app.post('/issues', async (request, response) => {
-    try {
-        if (
-            !request.body.cid ||
-            !request.body.Cname ||
-            !request.body.Cnic ||
-            !request.body.Ccontact ||
-            !request.body.Clocation ||
-            !request.body.Cstatus
-        ) {
-            return response.status(400).send({
-                message: 'Send all required fields: cid, Cname, Cnic, Ccontact, Clocation, Cstatus',
-            });
-        }
-        const newIssue = {
-            cid: request.body.cid,
-            Cname: request.body.Cname,
-            Cnic: request.body.Cnic,
-            Ccontact: request.body.Ccontact,
-            Clocation: request.body.Clocation,
-            Cstatus: request.body.Cstatus,
-        };
-        const issue = await Issue.create(newIssue);
-
-        return response.status(201).send(issue);
-    } catch (error) {
-        console.log(error.message);
-        response.status(500).send({ message: error.message })
-    }
-});
-
-//Route for get all books from database
-app.get('/issues', async (request, response) => {
-    try {
-        const issues = await Issue.find({});
-        return response.status(200).json({
-            count: issues.length,
-            data: issues
-        });
-    } catch (error) {
-        confirm.log(error.message);
-        response.status(500).send({ message: error.message });
-    }
-});
-
-//Route for get one book from database by id
-app.get('/issues/:id', async (request, response) => {
-    try {
-        const { id } = request.params;
-
-        const issue = await Issue.findById(id);
-        return response.status(200).json(issue);
-    } catch (error) {
-        confirm.log(error.message);
-        response.status(500).send({ message: error.message });
-    }
-});
-
-//Route for update a Book
-app.put('/issues/:id', async (request, response) => {
-    try {
-        if (
-            !request.body.cid ||
-            !request.body.Cname ||
-            !request.body.Cnic ||
-            !request.body.Ccontact ||
-            !request.body.Clocation ||
-            !request.body.Cstatus
-        ) {
-            return response.status(400).send({
-                message: 'Send all required fields: cid, Cname, Cnic, Ccontact, Clocation, Cstatus',
-            });
-        }
-
-        const { id } = request.params;
-
-        const result = await Issue.findByIdAndUpdate(id, request.body);
-
-        if (!result) {
-            return response.status(404).json({ message: 'Issue not found' });
-        }
-
-        return response.status(200).json({ message: 'Issue update Successfully' });
-
-    } catch (error) {
-        console.log(error.message);
-        response.status(500).send({ message: error.message });
+    if (updatedBooking.status === "accepted") {
+      // TODO: implement your email content util if needed
+      await transporter.sendMail({
+        from: EMAIL_ADD,
+        to: updatedBooking.email,
+        subject: "Booking Accepted",
+        text: "Your booking has been accepted."
+      });
     }
 
-
+    res.status(200).json({ message: "Booking status updated successfully", updatedBooking });
+  } catch (err) {
+    console.error("Error updating booking status:", err);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
-//Route for Delete a issue 
-app.delete('/issues/:id', async (request, response) => {
-    try {
-        const { id } = request.params;
+app.put("/updateBookingDetails/:id", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
+  try {
+    const { error, value } = bookingSchema.validate(req.body, { allowUnknown: false });
+    if (error) return res.status(400).json({ error: error.details[0].message });
 
-        const result = await Issue.findByIdAndDelete(id);
+    const allowed = pick(value, ["ownerName","email","phone","specialNotes","location","serviceType","vehicleModel","vehicleNumber","date","time"]);
+    const updated = await Booking.findByIdAndUpdate(req.params.id, allowed, { new: true, runValidators: true });
+    if (!updated) return res.status(404).json({ error: "Booking not found" });
 
-        if (!result) {
-            return response.status(404).json({ message: 'Issue not found' });
-        }
-
-        return response.status(200).send({ message: 'Issue delete Successfully' });
-
-    } catch (error) {
-        console.log(error.message);
-        response.status(500).send({ message: error.message });
-    }
+    res.status(200).json({ message: "Booking details updated successfully", updatedBooking: updated });
+  } catch (err) {
+    console.error("Error updating booking details:", err);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
-//Amada's Routes
-
-const Customers = require("./models/customerModel");
-
-app.post("/customers/", (req, res) => {
-    Customers.create(req.body)
-        .then(() => res.json({ msg: "Customer added successfully" }))
-        .catch(() => res.status(400).json({ msg: "Custommer adding failed" }));
+app.get("/allBookingRequest", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
+  try {
+    const data = await Booking.find();
+    res.json(data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
 });
 
-app.get("/customers/", (req, res) => {
+// Services
+app.post("/addservice", requireJwtAuth, hasRole(["admin"]), upload.single("image"), async (req, res) => {
+  try {
+    const { error, value } = serviceSchema.validate(req.body, { allowUnknown: false });
+    if (error) return res.status(400).json({ error: error.details[0].message });
 
-    Customers.find()
-        .then((customers) => res.json(customers))
-        .catch(() => rex.status(400).json({ msg: "No employee" }));
+    const allowed = pick(value, ["serviceTitle","estimatedHour","details","image"]);
+    const newService = new Service({ serviceTitle: allowed.serviceTitle, estimatedHour: allowed.estimatedHour, details: allowed.details, imagePath: allowed.image });
+    await newService.save();
+
+    res.json({ success: true, name: allowed.serviceTitle });
+  } catch (err) {
+    console.error("Error adding service:", err);
+    res.status(500).json({ error: "An error occurred while adding the service" });
+  }
 });
 
-app.get("/customers/:id", (req, res) => {
-    Customers.findById(req.params.id)
-        .then((customers) => res.json(customers))
-        .catch(() => res.status(400).json({ msg: "cannot find this customer" }))
+app.get("/allServices", requireJwtAuth, async (req, res) => {
+  try {
+    const data = await Service.find();
+    res.json(data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
 });
 
-app.put("/customers/:id", (req, res) => {
-    Customers.findByIdAndUpdate(req.params.id, req.body)
-        .then(() => res.json({ msg: "Update successfully" }))
-        .catch(() => res.status(400).json({ msg: "Update fail" }))
-        ;
+app.delete("/deleteBookingRequest/:id", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
+  try {
+    await Booking.findByIdAndDelete(req.params.id);
+    res.status(200).send("Booking request deleted successfully");
+  } catch (err) {
+    console.error("Error deleting booking request:", err);
+    res.status(500).send("Internal server error");
+  }
 });
 
-app.delete("/customers/:id", (req, res) => {
-    Customers.findByIdAndDelete(req.params.id).then(() =>
-        res
-            .json({ msg: "Delete successfully" }))
-            .catch(() => res.status(400).json({ msg: "Delete fail" }));
+app.delete("/deleteServices/:id", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
+  try {
+    await Service.findByIdAndDelete(req.params.id);
+    res.status(200).send("Service deleted successfully");
+  } catch (err) {
+    console.error("Error deleting service:", err);
+    res.status(500).send("Internal server error");
+  }
 });
 
-app.get('/allusers',async (req, res)=>{
-    let users = await Admin.find({})
-    console.log("All Users Fetched");
-    res.send(users);
-})
+app.put("/updateservice/:id", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
+  try {
+    const { error, value } = serviceSchema.validate(req.body, { allowUnknown: false });
+    if (error) return res.status(400).json({ error: error.details[0].message });
 
-app.delete("/users/:id", (req, res) => {
-    Admin.findByIdAndDelete(req.params.id).then(() =>
-        res
-            .json({ msg: "Delete successfully" }))
-            .catch(() => res.status(400).json({ msg: "Delete fail" }));
+    const allowed = pick(value, ["serviceTitle","estimatedHour","details","image"]);
+    const updated = await Service.findByIdAndUpdate(req.params.id, allowed, { new: true, runValidators: true });
+    if (!updated) return res.status(404).json({ error: "Service not found" });
+
+    res.status(200).json({ message: "Service updated successfully", service: updated });
+  } catch (err) {
+    console.error("Error updating Service:", err);
+    res.status(500).json({ error: "Server error" });
+  }
 });
+
+// Issues
+app.post("/issues", requireJwtAuth, async (req, res) => {
+  try {
+    const { error, value } = issueSchema.validate(req.body, { allowUnknown: false });
+    if (error) return res.status(400).send({ message: error.details[0].message });
+
+    const allowed = pick(value, ["cid", "Cname", "Cnic", "Ccontact", "Clocation", "Cstatus"]);
+    const issue = await Issue.create(allowed);
+    res.status(201).send(issue);
+  } catch (err) {
+    console.log(err.message);
+    res.status(500).send({ message: err.message });
+  }
+});
+
+app.get("/issues", requireJwtAuth, async (req, res) => {
+  try {
+    const issues = await Issue.find({});
+    res.status(200).json({ count: issues.length, data: issues });
+  } catch (err) {
+    console.log(err.message);
+    res.status(500).send({ message: err.message });
+  }
+});
+
+app.get("/issues/:id", requireJwtAuth, async (req, res) => {
+  try {
+    const issue = await Issue.findById(req.params.id);
+    if (!issue) return res.status(404).json({ message: "Issue not found" });
+    res.status(200).json(issue);
+  } catch (err) {
+    console.log(err.message);
+    res.status(500).send({ message: err.message });
+  }
+});
+
+app.put("/issues/:id", requireJwtAuth, async (req, res) => {
+  try {
+    const { error, value } = issueSchema.validate(req.body, { allowUnknown: false });
+    if (error) return res.status(400).send({ message: error.details[0].message });
+
+    const allowed = pick(value, ["cid", "Cname", "Cnic", "Ccontact", "Clocation", "Cstatus"]);
+    const updated = await Issue.findByIdAndUpdate(req.params.id, allowed, { new: true, runValidators: true });
+    if (!updated) return res.status(404).json({ message: "Issue not found" });
+
+    res.status(200).json({ message: "Issue update Successfully", issue: updated });
+  } catch (err) {
+    console.log(err.message);
+    res.status(500).send({ message: err.message });
+  }
+});
+
+app.delete("/issues/:id", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
+  try {
+    const deleted = await Issue.findByIdAndDelete(req.params.id);
+    if (!deleted) return res.status(404).json({ message: "Issue not found" });
+    res.status(200).send({ message: "Issue delete Successfully" });
+  } catch (err) {
+    console.log(err.message);
+    res.status(500).send({ message: err.message });
+  }
+});
+
+// Customers (admin)
+app.post("/customers/", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
+  try {
+    const { error, value } = customerSchema.validate(req.body, { allowUnknown: false });
+    if (error) return res.status(400).json({ msg: error.details[0].message });
+
+    const allowed = pick(value, ["customerID","name","NIC","address","contactno","email","vType","vName","Regno","vColor","vFuel"]);
+    await Customers.create(allowed);
+    res.json({ msg: "Customer added successfully" });
+  } catch (err) {
+    console.error("Error validating customer data:", err);
+    res.status(500).json({ msg: "Internal server error" });
+  }
+});
+
+app.get("/customers/", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
+  try {
+    const customers = await Customers.find();
+    res.json(customers);
+  } catch {
+    res.status(400).json({ msg: "No customers" });
+  }
+});
+
+app.get("/customers/:id", requireJwtAuth, async (req, res) => {
+  try {
+    const customer = await Customers.findById(req.params.id);
+    if (!customer) return res.status(404).json({ msg: "Customer not found" });
+    res.json(customer);
+  } catch {
+    res.status(500).json({ msg: "Internal server error" });
+  }
+});
+
+app.put("/customers/:id", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
+  try {
+    const { error, value } = customerSchema.validate(req.body, { allowUnknown: false });
+    if (error) return res.status(400).json({ msg: error.details[0].message });
+
+    const allowed = pick(value, ["customerID","name","NIC","address","contactno","email","vType","vName","Regno","vColor","vFuel"]);
+    const updated = await Customers.findByIdAndUpdate(req.params.id, allowed, { runValidators: true, new: true });
+    if (!updated) return res.status(404).json({ msg: "Customer not found" });
+    res.json({ msg: "Update successfully", customer: updated });
+  } catch (err) {
+    console.error("Error updating customer:", err);
+    res.status(400).json({ msg: "Update fail" });
+  }
+});
+
+app.delete("/customers/:id", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
+  try {
+    await Customers.findByIdAndDelete(req.params.id);
+    res.json({ msg: "Delete successfully" });
+  } catch {
+    res.status(400).json({ msg: "Delete fail" });
+  }
+});
+
+app.get("/allusers", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
+  const users = await Admins.find({});
+  res.send(users);
+});
+
+app.delete("/users/:id", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
+  try {
+    await Admins.findByIdAndDelete(req.params.id);
+    res.json({ msg: "Delete successfully" });
+  } catch {
+    res.status(400).json({ msg: "Delete fail" });
+  }
+});
+
+// --------- START ---------
+app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));

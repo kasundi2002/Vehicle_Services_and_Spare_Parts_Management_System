@@ -36,7 +36,7 @@
     font-size: 18px;
 }
 
-.loginSignup-container button{
+.loginSignup-container button:not(.google-btn) {
     width: 200px;
     height: 72px;
     color: white;
@@ -79,4 +79,24 @@
     width: 15px;
     height: 15px;
 
+}
+
+.google-btn {
+    width: 100% !important;
+    height: auto !important;
+    padding: 10px 14px !important;
+    border-radius: 6px;
+    border: 1px solid #4285F4; /* Google blue border */
+    background: #fff;
+    color: #4285F4;  /* blue text */
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    margin-top: 12px;
+    transition: all 0.2s ease-in-out;
+}
+
+.google-btn:hover {
+    background: #4285F4; 
+    color: #fff; /* invert on hover */
 }
