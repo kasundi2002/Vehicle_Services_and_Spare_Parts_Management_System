@@ -17,7 +17,7 @@ const rateLimit = require("express-rate-limit");
 app.use(express.json());
 
 // CORS Configuration with allowlist
-const allowedOrigins = process.env.ALLOWED_ORIGINS 
+const allowedOrigins = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
     : ['http://localhost:3000', 'http://localhost:5173'];
 
@@ -25,7 +25,7 @@ const corsOptions = {
     origin: function (origin, callback) {
         // Allow requests with no origin (like mobile apps or curl requests)
         if (!origin) return callback(null, true);
-        
+
         if (allowedOrigins.indexOf(origin) !== -1) {
             callback(null, true);
         } else {
@@ -47,42 +47,42 @@ app.set('trust proxy', 1);
 // ===== RATE LIMITING =====
 // Standard limiter for general API endpoints
 const standardLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: {
-    error: 'Too many requests from this IP, please try again later.',
-    retryAfter: '15 minutes'
-  },
-  onLimitReached: (req, res, options) => {
-    console.log(`🚫 Rate limit exceeded for IP: ${req.ip} on ${req.path}`);
-  }
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // limit each IP to 100 requests per windowMs
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+        error: 'Too many requests from this IP, please try again later.',
+        retryAfter: '15 minutes'
+    },
+    onLimitReached: (req, res, options) => {
+        console.log(`🚫 Rate limit exceeded for IP: ${req.ip} on ${req.path}`);
+    }
 });
 
 // Auth limiter for login/signup endpoints (stricter)
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // limit each IP to 5 requests per windowMs
-  standardHeaders: true,
-  legacyHeaders: false,
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 5, // limit each IP to 5 requests per windowMs
+    standardHeaders: true,
+    legacyHeaders: false,
 });
 
 // Auth slowdown for repeated failed attempts
 const authSlowdown = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 3, // limit each IP to 3 requests per windowMs
-  standardHeaders: true,
-  legacyHeaders: false,
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 3, // limit each IP to 3 requests per windowMs
+    standardHeaders: true,
+    legacyHeaders: false,
 });
 
 // Login limiter by email (more specific)
 const loginLimiterByEmail = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 3, // limit each email to 3 login attempts per windowMs
-  keyGenerator: (req) => req.body.email || req.ip,
-  standardHeaders: true,
-  legacyHeaders: false,
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 3, // limit each email to 3 login attempts per windowMs
+    keyGenerator: (req) => req.body.email || req.ip,
+    standardHeaders: true,
+    legacyHeaders: false,
 });
 
 // ===== RATE LIMITING (additions) =====
@@ -91,57 +91,57 @@ const loginLimiterByEmail = rateLimit({
  * This reduces shared-IP head-of-line blocking without changing login/signup behavior.
  */
 const keyByUserOrIp = (req) => {
-  try {
-    // If the app already sets req.user (JWT middleware), prefer it
-    if (req.user && (req.user.id || req.user._id)) {
-      return String(req.user.id || req.user._id);
-    }
-  } catch (_) {}
-  return req.ip;
+    try {
+        // If the app already sets req.user (JWT middleware), prefer it
+        if (req.user && (req.user.id || req.user._id)) {
+            return String(req.user.id || req.user._id);
+        }
+    } catch (_) { }
+    return req.ip;
 };
 
 // Lighter limiter for read-heavy GET endpoints (lists/aggregates)
 const readLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 60,
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: keyByUserOrIp,
+    windowMs: 15 * 60 * 1000,
+    max: 60,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: keyByUserOrIp,
 });
 
 // Stricter limiter for admin-like management endpoints
 const adminLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: keyByUserOrIp,
+    windowMs: 15 * 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: keyByUserOrIp,
 });
 // ===== END additions =====
 
 // Apply standard limiter to sensitive routes
 app.use([
-  '/upload',
-  '/addproduct',
-  '/removeproduct',
-  '/updateproduct/:id',
-  '/addbooking',
-  '/updateBookingStatus2/:id',
-  '/updateBookingDetails/:id',
-  '/deleteBookingRequest/:id',
-  '/addservice',
-  '/deleteServices/:id',
-  '/updateservice/:id',
-  '/issues',
-  '/issues/:id',
-  '/order',
-  '/order/:id',
-  '/customers',
-  '/customers/:id',
-  '/users',
-  '/users/:id',
-  '/product/:id',
-  '/product/quantity',
+    '/upload',
+    '/addproduct',
+    '/removeproduct',
+    '/updateproduct/:id',
+    '/addbooking',
+    '/updateBookingStatus2/:id',
+    '/updateBookingDetails/:id',
+    '/deleteBookingRequest/:id',
+    '/addservice',
+    '/deleteServices/:id',
+    '/updateservice/:id',
+    '/issues',
+    '/issues/:id',
+    '/order',
+    '/order/:id',
+    '/customers',
+    '/customers/:id',
+    '/users',
+    '/users/:id',
+    '/product/:id',
+    '/product/quantity',
 ], standardLimiter);
 
 // Apply auth limiters to authentication endpoints
@@ -151,9 +151,55 @@ app.use(['/signup', '/login', '/adminsignup', '/adminlogin'], authLimiter);
 // Database Connection With MongoDB
 mongoose.connect("mongodb+srv://vehicleitp:16873Myno@test.fw5mj0t.mongodb.net/itpdb");
 
+// ====== SECURITY: response & error sanitizers (add above first route) ======
+const INTERNAL_ERROR = { error: 'Internal server error' };
+
+// Centralized error -> safe payload
+function sanitizeError(err) {
+    // Log server-side only (do NOT leak stack/message to clients)
+    try { console.error(err && err.stack ? err.stack : err); } catch (_) { }
+    return INTERNAL_ERROR;
+}
+
+// Tiny "pick" helpers (no new deps)
+function pick(obj, keys) {
+    const out = {};
+    for (const k of keys) if (obj && Object.prototype.hasOwnProperty.call(obj, k)) out[k] = obj[k];
+    return out;
+}
+function mapList(list, keys) {
+    return Array.isArray(list) ? list.map(x => pick(x, keys)) : [];
+}
+
+// Domain DTOs (adjust to your actual field names)
+function toPublicProduct(p) {
+    return pick(p, ['_id', 'id', 'name', 'category', 'brand', 'new_price', 'old_price', 'description', 'quantity', 'image', 'available', 'date']);
+}
+function toPublicAdmin(u) {
+    // no password/hash/salt/otp/secret fields!
+    return pick(u, ['_id', 'name', 'email', 'role', 'date']);
+}
+function toPublicBooking(b) {
+    return pick(b, ['_id', 'bookingId', 'ownerName', 'email', 'phone', 'status', 'location', 'serviceType', 'vehicleModel', 'vehicleNumber', 'date', 'time']);
+}
+function toPublicService(s) {
+    return pick(s, ['_id', 'serviceTitle', 'details', 'estimatedHour', 'imagePath']);
+}
+function toPublicCustomer(c) {
+    return pick(c, ['_id', 'customerID', 'name', 'NIC', 'address', 'contactno', 'email', 'vType', 'vName', 'Regno', 'vColor', 'vFuel']);
+}
+function toPublicInventory(i) {
+    return pick(i, ['_id', 'InventoryID', 'InventoryType', 'InventoryName', 'Vendor', 'UnitPrice', 'UnitNo', 'Description']);
+}
+function toPublicOrder(o) {
+    return pick(o, ['_id', 'orderId', 'fullName', 'email', 'address', 'contact', 'paymentMethod', 'items', 'totalAmount', 'orderDate', 'status']);
+}
+// ====== END security helpers ======
+
+
 //API Creation
 
-app.get("/",(req, res) =>{
+app.get("/", (req, res) => {
     res.send("Express App is running")
 })
 
@@ -161,20 +207,20 @@ app.get("/",(req, res) =>{
 
 const storage = multer.diskStorage({
     destination: './upload/images',
-    filename:(req,file,cb)=>{
+    filename: (req, file, cb) => {
         return cb(null, `${file.fieldname}_${Date.now()}${path.extname(file.originalname)}`)
     }
 })
 
-const upload = multer({storage:storage})
+const upload = multer({ storage: storage })
 
 //Creating upload endpoint for images
-app.use('/images',express.static('upload/images'))
+app.use('/images', express.static('upload/images'))
 
-app.post("/upload",upload.single('product'),(req,res)=>{
+app.post("/upload", upload.single('product'), (req, res) => {
     res.json({
-        success:1,
-        image_url:`http://localhost:${port}/images/${req.file.filename}`
+        success: 1,
+        image_url: `http://localhost:${port}/images/${req.file.filename}`
     })
 })
 
@@ -228,12 +274,12 @@ app.post("/upload",upload.single('product'),(req,res)=>{
     }
 })*/
 
-app.post('/addproduct', async (req,res)=>{
+app.post('/addproduct', async (req, res) => {
     try {
         const products = await Product.find({});
         let id = 1;
 
-        if(products.length > 0) {
+        if (products.length > 0) {
             const lastProduct = products[products.length - 1];
             id = lastProduct.id + 1;
         }
@@ -259,34 +305,39 @@ app.post('/addproduct', async (req,res)=>{
         });
     } catch (error) {
         console.error("Error while adding product:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
+        return res.status(500).json(sanitizeError(error));
     }
 })
 
 
 // Creating API for deleting Product
 
-app.post('/removeproduct',async (req,res)=>{
-    await Product.findOneAndDelete({id:req.body.id});
+app.post('/removeproduct', async (req, res) => {
+    await Product.findOneAndDelete({ id: req.body.id });
     console.log("Removed");
     res.json({
-        success:true,
-        name:req.body.name,
+        success: true,
+        name: req.body.name,
     })
 })
 
 // Creating API for getting all products
 
-app.get('/allproducts', readLimiter, async (req, res)=>{ // rate-limit: added
-    let products = await Product.find({})
-    console.log("All Products Fetched");
-    res.send(products);
+app.get('/allproducts', readLimiter, async (req, res) => { // rate-limit: added
+    ; try {
+        const products = await Product.find({}).lean();
+        console.log("All Products Fetched");
+        return res.json(products.map(toPublicProduct));
+    } catch (error) {
+        console.error("Error while fetching all products:", error);
+        return res.status(500).json(sanitizeError(error));
+    }
 })
 
-app.listen(port,(error)=>{
-    if(!error){
+app.listen(port, (error) => {
+    if (!error) {
         console.log("Server Running on Port " + port)
-    }else{
+    } else {
         console.log("Error : " + errror)
     }
 })
@@ -317,7 +368,7 @@ app.put('/updateproduct/:id', async (req, res) => {
         res.json({ success: true, product });
     } catch (error) {
         console.error("Error while updating product:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
+        return res.status(500).json(sanitizeError(error));
     }
 });
 
@@ -325,7 +376,7 @@ app.put('/updateproduct/:id', async (req, res) => {
 app.get('/product/:id', async (req, res) => {
     try {
         const productId = req.params.id;
-        
+
         // Find the product by ID
         const product = await Product.findOne({ id: productId });
 
@@ -343,19 +394,19 @@ app.get('/product/:id', async (req, res) => {
 app.get('/lowStockProducts', async (req, res) => {
     try {
         let products = await Product.find({});
-        
+
         // Filter products with quantity less than 2
         const lowStockProducts = products.filter(product => product.quantity < 3);
 
         if (lowStockProducts.length > 0) {
             // Send a notification or flag to indicate low stock products
-            res.json({ success: true, products, lowStockProducts });
+            res.json({ success: true, products: products.map(toPublicProduct), lowStockProducts: lowStockProducts.map(toPublicProduct) });
         } else {
-            res.json({ success: true, products });
+            res.json({ success: true, products: products.map(toPublicProduct) });
         }
     } catch (error) {
         console.error("Error while fetching all products:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
+        return res.status(500).json(sanitizeError(error));
     }
 });
 
@@ -366,15 +417,16 @@ app.get('/processingOrdersCount', async (req, res) => {
         const processingOrdersCount = orders.filter(Order => Order.status === 'processing');
 
         if (processingOrdersCount.length > 0) {
-            res.json({ success: true, orders, processingOrdersCount });
+            res.json({ success: true, orders: orders.map(toPublicOrder), processingOrdersCount: processingOrdersCount.map(toPublicOrder) });
         } else {
-            res.json({ success: true, orders });
+            res.json({ success: true, orders: orders.map(toPublicOrder) });
         }
     } catch (error) {
         console.error("Error while fetching processing orders:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
+        return res.status(500).json(sanitizeError(error));
     }
 });
+
 
 /*const Users = mongoose.model('Users',{
     name:{
@@ -396,34 +448,34 @@ app.get('/processingOrdersCount', async (req, res) => {
     }
 })*/
 
-app.post('/signup',async (req,res) =>{
+app.post('/signup', async (req, res) => {
 
-    let check = await Users.findOne({email:req.body.email});
-    if(check){
-        return res.status(400).json({success:false,errors:"eixsting user found with same email address"})
+    let check = await Users.findOne({ email: req.body.email });
+    if (check) {
+        return res.status(400).json({ success: false, errors: "eixsting user found with same email address" })
 
     }
     let cart = {};
-    for (let i = 0; i < 300; i++){
-        cart[i]=0;
+    for (let i = 0; i < 300; i++) {
+        cart[i] = 0;
     }
     const user = new Users({
-        name:req.body.name,
-        email:req.body.email,
-        password:req.body.password,
-        cartData:cart,
+        name: req.body.name,
+        email: req.body.email,
+        password: req.body.password,
+        cartData: cart,
     })
 
     await user.save();
 
-    const data ={
-        user:{
-            id:user.id
+    const data = {
+        user: {
+            id: user.id
         }
     }
 
     const token = jwt.sign(data, 'secret_ecom');
-    res.json({success:true,token})
+    res.json({ success: true, token })
 })
 
 
@@ -461,40 +513,40 @@ app.post('/adminsignup', async (req, res) => {
         };
 
         // Return success response with token (if needed)
-        res.json({ success: true, data });
+        res.json({ success: true, data: toPublicAdmin(newAdmin) });
     } catch (error) {
         console.error('Admin signup error:', error);
         res.status(500).json({ success: false, errors: "Internal server error" });
     }
 });
 
-app.post('/login', async (req,res) => {
-    let user = await Users.findOne({email:req.body.email});
-    if(user){
+app.post('/login', async (req, res) => {
+    let user = await Users.findOne({ email: req.body.email });
+    if (user) {
         const passCompare = req.body.password === user.password;
-        if(passCompare){
+        if (passCompare) {
             const data = {
-                user:{
+                user: {
                     id: user.id
                 }
             }
             const token = jwt.sign(data, 'secret_ecom');
-            res.json({success:true,token});
+            res.json({ success: true, token });
         }
-        else{
-            res.json({success:false,errors:"wrong Password"});
+        else {
+            res.json({ success: false, errors: "wrong Password" });
         }
     }
-    else{
-        res.json({success:false,errors:"wrong Email Id"})
+    else {
+        res.json({ success: false, errors: "wrong Email Id" })
     }
 })
 
-app.post('/adminlogin', async (req,res) => {
-    let Admin = await Admins.findOne({email:req.body.email});
-    if(Admin){
+app.post('/adminlogin', async (req, res) => {
+    let Admin = await Admins.findOne({ email: req.body.email });
+    if (Admin) {
         const passCompare = req.body.password === Admin.password;
-        if(passCompare){
+        if (passCompare) {
             const data = {
                 Admin: {
                     id: Admin._id,
@@ -504,36 +556,36 @@ app.post('/adminlogin', async (req,res) => {
                 }
             };
             const token = jwt.sign(data, 'secret_ecom');
-            res.json({success:true,token});
+            res.json({ success: true, token });
         }
-        else{
-            res.json({success:false,errors:"wrong Password"});
+        else {
+            res.json({ success: false, errors: "wrong Password" });
         }
     }
-    else{
-        res.json({success:false,errors:"wrong Email Id"})
+    else {
+        res.json({ success: false, errors: "wrong Email Id" })
     }
 })
 
-app.get('/newcollections', async (req,res) =>{
+app.get('/newcollections', async (req, res) => {
     let products = await Product.find({});
     let newcollection = products.slice(1).slice(-8);
     console.log("NewCollection Fetched");
     res.send(newcollection);
 })
 
-const fetchUser = async (req,res,next)=>{
+const fetchUser = async (req, res, next) => {
     const token = req.header('auth-token');
-    if(!token){
-        res.status(401).send({errors:"please authenticate using valid token"})
+    if (!token) {
+        res.status(401).send({ errors: "please authenticate using valid token" })
     }
-    else{
-        try{
+    else {
+        try {
             const data = jwt.verify(token, 'secret_ecom');
             req.user = data.user;
             next();
-        } catch(error){
-            res.status(401).send({errors:"please authenticate using valid token"})
+        } catch (error) {
+            res.status(401).send({ errors: "please authenticate using valid token" })
         }
     }
 }
@@ -563,11 +615,11 @@ app.post('/addtocart', fetchUser, async (req, res) => {
         let userData = await Users.findOne({ _id: req.user.id });
         userData.cartData[itemId] += 1;
         await Users.findOneAndUpdate({ _id: req.user.id }, { cartData: userData.cartData });
-        
+
         res.json({ success: true, message: "Item added to cart successfully" });
     } catch (error) {
         console.error("Error while adding item to cart:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
+        return res.status(500).json(sanitizeError(error));
     }
 });
 
@@ -586,7 +638,7 @@ app.post('/removefromcart', fetchUser, async (req, res) => {
         if (userData.cartData[itemId] > 0) {
 
             userData.cartData[itemId] -= 1;
-            
+
             const product = await Product.findOne({ id: itemId });
 
 
@@ -603,15 +655,20 @@ app.post('/removefromcart', fetchUser, async (req, res) => {
         }
     } catch (error) {
         console.error("Error while removing item from cart:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
+        return res.status(500).json(sanitizeError(error));
     }
 });
 
 
-app.post('/getcart',fetchUser,async (req,res) =>{
-    console.log("GetCart");
-    let userData = await Users.findOne({_id:req.user.id});
-    res.json(userData.cartData)
+app.post('/getcart', fetchUser, async (req, res) => {
+    try {
+        console.log("GetCart");
+        let userData = await Users.findOne({ _id: req.user.id });
+        return res.json({ cartData: userData?.cartData ?? {} });
+    } catch (error) {
+        console.error("Error while fetching cart:", error);
+        return res.status(500).json(sanitizeError(error));
+    }
 })
 
 // Function to generate a unique order ID
@@ -626,10 +683,10 @@ function generateOrderId() {
     return orderId;
 }
 
-const getDefaultCart = () =>{
+const getDefaultCart = () => {
     let cart = {};
-    for (let index = 0; index < 300 + 1; index++){
-        cart[index]=0;
+    for (let index = 0; index < 300 + 1; index++) {
+        cart[index] = 0;
     }
     return cart;
 }
@@ -637,7 +694,7 @@ const getDefaultCart = () =>{
 const clearCart = async (userId) => {
     try {
         const defaultCart = getDefaultCart();
-        await Users.findByIdAndUpdate(userId, {cartData : defaultCart });
+        await Users.findByIdAndUpdate(userId, { cartData: defaultCart });
         console.log("Cart cleared for user:", userId);
     } catch (error) {
         console.error("Error while clearing cart:", error);
@@ -698,7 +755,7 @@ const transporter = nodemailer.createTransport({
     }
 });
 
-app.post('/checkout',fetchUser, async (req, res) => {
+app.post('/checkout', fetchUser, async (req, res) => {
     try {
 
         const { fullName, email, address, contact, paymentMethod, items, totalAmount } = req.body;
@@ -735,7 +792,7 @@ app.post('/checkout',fetchUser, async (req, res) => {
         res.json({ success: true, orderId });
     } catch (error) {
         console.error("Error while saving order:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
+        return res.status(500).json(sanitizeError(error));
     }
 });
 
@@ -753,7 +810,7 @@ app.get('/product/quantity/:id', async (req, res) => {
         res.json({ success: true, quantity: product.quantity });
     } catch (error) {
         console.error("Error while fetching product quantity:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
+        return res.status(500).json(sanitizeError(error));
     }
 });
 
@@ -766,7 +823,7 @@ app.get('/orders', readLimiter, async (req, res) => { // rate-limit: added
         res.json({ success: true, orders });
     } catch (error) {
         console.error("Error while fetching orders:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
+        return res.status(500).json(sanitizeError(error));
     }
 });
 
@@ -782,7 +839,7 @@ app.delete('/order/:id', async (req, res) => {
         res.json({ success: true, message: 'Order deleted successfully' });
     } catch (error) {
         console.error("Error while deleting order:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
+        return res.status(500).json(sanitizeError(error));
     }
 });
 
@@ -800,7 +857,7 @@ app.put('/order/:id', async (req, res) => {
         if (!updatedOrder) {
             return res.status(404).json({ success: false, error: 'Order not found' });
         }
-        
+
         res.json({ success: true, order: updatedOrder });
 
         const { fullName, email } = updatedOrder;
@@ -814,10 +871,10 @@ app.put('/order/:id', async (req, res) => {
 
         // Send the email
         await transporter.sendMail(mailOptions);
-        
+
     } catch (error) {
         console.error("Error while updating order status:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
+        return res.status(500).json(sanitizeError(error));
     }
 });
 
@@ -827,7 +884,7 @@ app.get('/processingOrders', readLimiter, async (req, res) => { // rate-limit: a
         res.json({ success: true, processingOrdersCount });
     } catch (error) {
         console.error("Error while fetching processing orders count:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
+        return res.status(500).json(sanitizeError(error));
     }
 });
 
@@ -837,7 +894,7 @@ app.get('/shippedOrders', readLimiter, async (req, res) => { // rate-limit: adde
         res.json({ success: true, shippedOrdersCount });
     } catch (error) {
         console.error("Error while fetching shipped orders count:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
+        return res.status(500).json(sanitizeError(error));
     }
 });
 
@@ -853,7 +910,7 @@ app.get('/totalAmountOfOrders', readLimiter, async (req, res) => { // rate-limit
         res.json({ success: true, totalAmountOfOrders });
     } catch (error) {
         console.error("Error while fetching total amount of all orders:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
+        return res.status(500).json(sanitizeError(error));
     }
 });
 
@@ -864,7 +921,7 @@ app.get('/deliveredOrders', readLimiter, async (req, res) => { // rate-limit: ad
         res.json({ success: true, deliveredOrdersCount });
     } catch (error) {
         console.error("Error while fetching delivered orders count:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
+        return res.status(500).json(sanitizeError(error));
     }
 });
 
@@ -879,7 +936,7 @@ app.get('/totalAmountOfOrders', async (req, res) => {
         res.json({ success: true, totalAmountOfOrders });
     } catch (error) {
         console.error("Error while fetching total amount of all orders:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
+        return res.status(500).json(sanitizeError(error));
     }
 });
 
@@ -894,7 +951,7 @@ app.get('/totalAmountOfDelivered', readLimiter, async (req, res) => { // rate-li
         res.json({ success: true, totalAmountOfOrders });
     } catch (error) {
         console.error("Error while fetching total amount of all orders:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
+        return res.status(500).json(sanitizeError(error));
     }
 });
 
@@ -909,7 +966,7 @@ app.get('/totalAmountOfDelivered', async (req, res) => {
         res.json({ success: true, totalAmountOfDeliveredOrders });
     } catch (error) {
         console.error("Error while fetching total amount of delivered orders:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
+        return res.status(500).json(sanitizeError(error));
     }
 });
 
@@ -924,7 +981,7 @@ app.get('/totalAmountOfPending', readLimiter, async (req, res) => { // rate-limi
         res.json({ success: true, totalAmountOfPending });
     } catch (error) {
         console.error("Error while fetching total amount of pending orders:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
+        return res.status(500).json(sanitizeError(error));
     }
 });
 
@@ -937,27 +994,27 @@ const Booking = require('./models/BookingModel');
 
 app.post('/addbooking', async (req, res) => {
     try {
-      // Extract form data from request body
-      const formData = req.body;
-  
-      // Create a new booking instance
-      const newBooking = new Booking(formData);
-  
-      // Save the booking to the database
-      await newBooking.save();
-      console.log("booking added");
-  
-      res.status(201).json({ message: 'Booking saved successfully' });
+        // Extract form data from request body
+        const formData = req.body;
+
+        // Create a new booking instance
+        const newBooking = new Booking(formData);
+
+        // Save the booking to the database
+        await newBooking.save();
+        console.log("booking added");
+
+        res.status(201).json({ message: 'Booking saved successfully' });
     } catch (error) {
-      console.error('Error saving booking:', error);
-      res.status(500).json({ error: 'Server error' });
+        console.error('Error saving booking:', error);
+        res.status(500).json({ error: 'Server error' });
     }
-  });
+});
 
 
-  const sendEmail = require('./email');
+const sendEmail = require('./email');
 
-  // Update booking status route
+// Update booking status route
 app.put('/updateBookingStatus2/:id', async (req, res) => {
     try {
         const { id } = req.params;
@@ -972,9 +1029,9 @@ app.put('/updateBookingStatus2/:id', async (req, res) => {
             const { email } = updatedBooking;
             const subject = 'Booking Accepted';
             const text = 'We are excited to confirm your booking! Your service request has been accepted. We look forward to serving you on Booking Date at Booking Time. Should you have any questions, feel free to reach out. Thank you for choosing us.';
-      
+
             await sendEmail(email, subject, text);
-          }
+        }
 
         if (!updatedBooking) {
             return res.status(404).json({ error: 'Booking not found' });
@@ -986,46 +1043,46 @@ app.put('/updateBookingStatus2/:id', async (req, res) => {
         res.status(500).json({ error: 'Server error' });
     }
 });
-  
 
-    // Update booking details route
-    app.put('/updateBookingDetails/:id', async (req, res) => {
-        try {
-          const { id } = req.params;
-          const updatedBooking = await Booking.findByIdAndUpdate(
+
+// Update booking details route
+app.put('/updateBookingDetails/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const updatedBooking = await Booking.findByIdAndUpdate(
             id,
             req.body, // Update booking details
             { new: true }
-          );
-    
-        if (!updatedBooking) {
-          return res.status(404).json({ error: 'Booking not found' });
-        }
-        res.status(200).json({ message: 'Booking details updated successfully', updatedBooking });
-        } catch (error) {
-        console.error('Error updating booking details:', error);
-        res.status(500).json({ error: 'Server error' });
-        }
-        }); 
-    
-        //get all booking details
-        app.get('/allBookingRequest', async (req, res) => {
-            try {
-              const data = await Booking.find();
-              res.json(data);
-              console.log("All Booking Requests Fetched");
-        
-            } catch (error) {
-              console.error(error);
-              res.status(500).json({ message: 'Server error' });
-            }
-          }
         );
 
-        
-        
+        if (!updatedBooking) {
+            return res.status(404).json({ error: 'Booking not found' });
+        }
+        res.status(200).json({ message: 'Booking details updated successfully', updatedBooking });
+    } catch (error) {
+        console.error('Error updating booking details:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
 
-    //pathum's Service Routes
+//get all booking details
+app.get('/allBookingRequest', async (req, res) => {
+    try {
+        const data = await Booking.find({}).lean();
+        console.log("All Booking Requests Fetched");
+        return res.json(data.map(toPublicBooking));
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json(sanitizeError(error));
+    }
+}
+);
+
+
+
+
+
+//pathum's Service Routes
 
 const Service = require('./models/ServiceModel');
 
@@ -1047,55 +1104,54 @@ app.post('/addservice', upload.single('image'), async (req, res) => {
         });
     } catch (error) {
         console.error('Error adding service:', error);
-        res.status(500).json({ error: 'An error occurred while adding the service' });
+        return res.status(500).json(sanitizeError(error));
     }
 });
 
 // 3. Create API endpoint to retrieve data
 app.get('/allServices', async (req, res) => {
     try {
-      const data = await Service.find();
-      res.json(data);
-      console.log("All Booking Requests Fetched");
-
+        const data = await Service.find({}).lean();
+        console.log("All Services Fetched");
+        return res.json(data.map(toPublicService));
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: 'Server error' });
+        console.error(error);
+        return res.status(500).json(sanitizeError(error));
     }
-  });
+});
 
 
-  // Define route for deleting booking requests
+// Define route for deleting booking requests
 app.delete('/deleteBookingRequest/:id', async (req, res) => {
     const requestId = req.params.id;
-  
+
     try {
-      // Find the booking request by ID and delete it
-      await Booking.findByIdAndDelete(requestId);
-      res.status(200).send('Booking request deleted successfully');
+        // Find the booking request by ID and delete it
+        await Booking.findByIdAndDelete(requestId);
+        res.status(200).send('Booking request deleted successfully');
     } catch (error) {
-      console.error('Error deleting booking request:', error);
-      res.status(500).send('Internal server error');
+        console.error('Error deleting booking request:', error);
+        return res.status(500).json(sanitizeError(error));
     }
-  });
-  
-  
-  
-  // Define route for deleting Services
+});
+
+
+
+// Define route for deleting Services
 app.delete('/deleteServices/:id', async (req, res) => {
     const requestId = req.params.id;
-  
-    try {
-      // Find the Services by ID and delete it
-      await Service.findByIdAndDelete(requestId);
-      res.status(200).send('Booking request deleted successfully');
-    } catch (error) {
-      console.error('Error deleting booking request:', error);
-      res.status(500).send('Internal server error');
-    }
-  });
 
-  // Add a new route to handle service updates
+    try {
+        // Find the Services by ID and delete it
+        await Service.findByIdAndDelete(requestId);
+        res.status(200).send('Booking request deleted successfully');
+    } catch (error) {
+        console.error('Error deleting booking request:', error);
+        return res.status(500).json(sanitizeError(error));
+    }
+});
+
+// Add a new route to handle service updates
 app.put('/updateservice/:id', async (req, res) => {
     try {
         const { id } = req.params;
@@ -1108,15 +1164,15 @@ app.put('/updateservice/:id', async (req, res) => {
         res.status(200).json({ message: 'Service updated successfully' });
     } catch (error) {
         console.error('Error updating Service:', error);
-        res.status(500).json({ error: 'Server error' });
+        return res.status(500).json(sanitizeError(error));
     }
 });
 
-  //Ruwindi routes
-  const Issue = require('./models/issueModel');
+//Ruwindi routes
+const Issue = require('./models/issueModel');
 const Admin = require("./models/OnlineShopModels/Admin");
 
-  //Route for save new Issue
+//Route for save new Issue
 app.post('/issues', async (request, response) => {
     try {
         if (
@@ -1143,8 +1199,8 @@ app.post('/issues', async (request, response) => {
 
         return response.status(201).send(issue);
     } catch (error) {
-        console.log(error.message);
-        response.status(500).send({ message: error.message })
+        console.error("Error saving issue:", error);
+        return response.status(500).json(sanitizeError(error));
     }
 });
 
@@ -1157,8 +1213,8 @@ app.get('/issues', async (request, response) => {
             data: issues
         });
     } catch (error) {
-        confirm.log(error.message);
-        response.status(500).send({ message: error.message });
+        console.error("Error fetching issues:", error);
+        return response.status(500).json(sanitizeError(error));
     }
 });
 
@@ -1170,8 +1226,8 @@ app.get('/issues/:id', async (request, response) => {
         const issue = await Issue.findById(id);
         return response.status(200).json(issue);
     } catch (error) {
-        confirm.log(error.message);
-        response.status(500).send({ message: error.message });
+        console.error("Error fetching issue by ID:", error);
+        return response.status(500).json(sanitizeError(error));
     }
 });
 
@@ -1202,8 +1258,8 @@ app.put('/issues/:id', standardLimiter, async (request, response) => { // rate-l
         return response.status(200).json({ message: 'Issue update Successfully' });
 
     } catch (error) {
-        console.log(error.message);
-        response.status(500).send({ message: error.message });
+         console.error("Error updating issue:", error);
+        return response.status(500).json(sanitizeError(error));
     }
 
 
@@ -1223,8 +1279,8 @@ app.delete('/issues/:id', standardLimiter, async (request, response) => { // rat
         return response.status(200).send({ message: 'Issue delete Successfully' });
 
     } catch (error) {
-        console.log(error.message);
-        response.status(500).send({ message: error.message });
+        console.error("Error deleting issue:", error);
+        return response.status(500).json(sanitizeError(error));
     }
 });
 
@@ -1245,10 +1301,17 @@ app.get("/customers/", (req, res) => {
         .catch(() => rex.status(400).json({ msg: "No employee" }));
 });
 
-app.get("/customers/:id", (req, res) => {
-    Customers.findById(req.params.id)
-        .then((customers) => res.json(customers))
-        .catch(() => res.status(400).json({ msg: "cannot find this customer" }))
+app.get("/customers/:id", async (req, res) => {
+    try {
+        const customer = await Customers.findById(req.params.id).lean();
+        if (!customer) {
+            return res.status(404).json({ msg: "Customer not found" });
+        }
+        return res.json(toPublicCustomer(customer));
+    } catch (error) {
+        console.error("Error fetching customer:", error);
+        return res.status(400).json({ msg: "Cannot find this customer" });
+    }
 });
 
 app.put("/customers/:id", (req, res) => {
@@ -1262,18 +1325,29 @@ app.delete("/customers/:id", (req, res) => {
     Customers.findByIdAndDelete(req.params.id).then(() =>
         res
             .json({ msg: "Delete successfully" }))
-            .catch(() => res.status(400).json({ msg: "Delete fail" }));
+        .catch(() => res.status(400).json({ msg: "Delete fail" }));
 });
 
-app.get('/allusers',async (req, res)=>{
-    let users = await Admin.find({})
-    console.log("All Users Fetched");
-    res.send(users);
+app.get('/allusers', adminLimiter, async (req, res)=>{ // rate-limit: added
+    try {
+        const users = await Admin.find({}).lean();
+        console.log("All Users Fetched");
+        return res.json(users.map(toPublicAdmin));
+    } catch (error) {
+        console.error("Error while fetching users:", error);
+        return res.status(500).json(sanitizeError(error));
+    }
 })
 
 app.delete("/users/:id", adminLimiter, (req, res) => { // rate-limit: added
     Admin.findByIdAndDelete(req.params.id).then(() =>
         res
             .json({ msg: "Delete successfully" }))
-            .catch(() => res.status(400).json({ msg: "Delete fail" }));
+        .catch(() => res.status(400).json({ msg: "Delete fail" }));
 });
+// ====== Centralized error handler (last middleware) ======
+app.use((err, req, res, next) => {
+  const safe = sanitizeError(err);
+  res.status(500).json(safe);
+});
+// ====== END error handler ======
