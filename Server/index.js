@@ -1,3 +1,4 @@
+const port = 4000;
 const express = require("express");
 const app = express();
 const mongoose = require("mongoose");
@@ -5,146 +6,150 @@ const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const path = require("path");
 const cors = require("cors");
-const helmet = require("helmet");
 const { log } = require("console");
-const Joi = require("joi");
-
-// Trust reverse proxy (Render/Heroku/NGINX) so req.secure & x-forwarded-proto work
-app.set('trust proxy', 1);
-
-// Remove Express fingerprinting
-app.disable('x-powered-by');
-
-// Helmet baseline (no CSP here — handled by another member)
-app.use(helmet({
-  frameguard: { action: 'deny' },   // X-Frame-Options: DENY
-  hidePoweredBy: true,              // X-Powered-By removed
-  noSniff: true,                    // X-Content-Type-Options: nosniff
-  referrerPolicy: { policy: 'no-referrer' } // optional but safe default
-}));
 const Product = require("./models/OnlineShopModels/Product");
 const Users = require("./models/OnlineShopModels/Users");
 const Order = require("./models/OnlineShopModels/Order");
 const Admins = require("./models/OnlineShopModels/Admin")
 var nodemailer = require('nodemailer');
-
-// Validation Schemas
-const userSchema = Joi.object({
-  name: Joi.string().min(2).max(50).trim().required(),
-  email: Joi.string().email().lowercase().trim().required(),
-  password: Joi.string().min(8).max(128).required()
-});
-
-const loginSchema = Joi.object({
-  email: Joi.string().email().lowercase().trim().required(),
-  password: Joi.string().required()
-});
-
-const productSchema = Joi.object({
-  name: Joi.string().min(2).max(100).trim().required(),
-  category: Joi.string().min(2).max(50).trim().required(),
-  brand: Joi.string().min(2).max(50).trim().required(),
-  image: Joi.string().uri().required(),
-  new_price: Joi.number().positive().required(),
-  old_price: Joi.number().positive().required(),
-  description: Joi.string().max(500).trim().required(),
-  quantity: Joi.number().integer().min(0).required()
-});
-
-const orderSchema = Joi.object({
-  fullName: Joi.string().min(2).max(100).trim().required(),
-  email: Joi.string().email().lowercase().trim().required(),
-  address: Joi.string().min(10).max(200).trim().required(),
-  contact: Joi.string().pattern(/^[0-9+\-\s()]+$/).min(10).max(15).required(),
-  paymentMethod: Joi.string().valid('cash', 'card', 'online').required(),
-  items: Joi.array().items(Joi.object()).min(1).required(),
-  totalAmount: Joi.number().positive().required()
-});
-
-const bookingSchema = Joi.object({
-  ownerName: Joi.string().min(2).max(100).trim().required(),
-  email: Joi.string().email().lowercase().trim().required(),
-  phone: Joi.string().pattern(/^[0-9+\-\s()]+$/).min(10).max(15).required(),
-  specialNotes: Joi.string().max(500).trim().allow(''),
-  location: Joi.string().min(5).max(100).trim().required(),
-  serviceType: Joi.string().min(2).max(50).trim().required(),
-  vehicleModel: Joi.string().min(2).max(50).trim().required(),
-  vehicleNumber: Joi.string().min(2).max(20).trim().required(),
-  date: Joi.date().min('now').required(),
-  time: Joi.string().pattern(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/).required()
-});
-
-const serviceSchema = Joi.object({
-  serviceTitle: Joi.string().min(2).max(100).trim().required(),
-  details: Joi.string().max(500).trim().allow(''),
-  estimatedHour: Joi.string().min(1).max(20).trim().required(),
-  image: Joi.string().uri().required()
-});
-
-const customerSchema = Joi.object({
-  customerID: Joi.string().min(2).max(20).trim().required(),
-  name: Joi.string().min(2).max(100).trim().required(),
-  NIC: Joi.string().pattern(/^[0-9]{9}[vVxX]|[0-9]{12}$/).required(),
-  address: Joi.string().min(10).max(200).trim().required(),
-  contactno: Joi.string().pattern(/^[0-9+\-\s()]+$/).min(10).max(15).required(),
-  email: Joi.string().email().lowercase().trim().required(),
-  vType: Joi.string().min(2).max(20).trim().required(),
-  vName: Joi.string().min(2).max(50).trim().required(),
-  Regno: Joi.string().min(2).max(20).trim().required(),
-  vColor: Joi.string().min(2).max(20).trim().required(),
-  vFuel: Joi.string().min(2).max(20).trim().required()
-});
-
-const issueSchema = Joi.object({
-  cid: Joi.string().min(2).max(20).trim().required(),
-  Cname: Joi.string().min(2).max(100).trim().required(),
-  Cnic: Joi.string().pattern(/^[0-9]{9}[vVxX]|[0-9]{12}$/).required(),
-  Ccontact: Joi.string().pattern(/^[0-9+\-\s()]+$/).min(10).max(15).required(),
-  Clocation: Joi.string().min(5).max(100).trim().required(),
-  Cstatus: Joi.string().valid('pending', 'in_progress', 'resolved', 'closed').required()
-});
-
-// Strict CORS with allow-list
-const allowed = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:3000,https://vehicle-sever.onrender.com')
-  .split(',')
-  .map(s => s.trim())
-  .filter(Boolean);
-
-const corsOptions = {
-  origin(origin, cb) {
-    // allow same-origin / non-browser clients without Origin
-    if (!origin) return cb(null, true);
-    if (allowed.includes(origin)) return cb(null, true);
-    return cb(new Error('CORS blocked: origin not allowed'), false);
-  },
-  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization','X-Requested-With','auth-token'],
-  // Only enable credentials if the app actually uses cookies across origins.
-  // credentials: true,
-  optionsSuccessStatus: 204
-};
+const rateLimit = require("express-rate-limit");
 
 app.use(express.json());
+
+// CORS Configuration with allowlist
+const allowedOrigins = process.env.ALLOWED_ORIGINS 
+    ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
+    : ['http://localhost:3000', 'http://localhost:5173'];
+
+const corsOptions = {
+    origin: function (origin, callback) {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+        
+        if (allowedOrigins.indexOf(origin) !== -1) {
+            callback(null, true);
+        } else {
+            console.warn(`CORS blocked request from origin: ${origin}`);
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'auth-token', 'X-Requested-With'],
+    optionsSuccessStatus: 200
+};
+
 app.use(cors(corsOptions));
 
-// HSTS (production + HTTPS only)
-const isProd = process.env.NODE_ENV === 'production';
+// Trust proxy for accurate IP detection
+app.set('trust proxy', 1);
 
-if (isProd) {
-  app.use((req, res, next) => {
-    const https = req.secure || req.headers['x-forwarded-proto'] === 'https';
-    if (https) {
-      res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+// ===== RATE LIMITING =====
+// Standard limiter for general API endpoints
+const standardLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'Too many requests from this IP, please try again later.',
+    retryAfter: '15 minutes'
+  },
+  onLimitReached: (req, res, options) => {
+    console.log(`🚫 Rate limit exceeded for IP: ${req.ip} on ${req.path}`);
+  }
+});
+
+// Auth limiter for login/signup endpoints (stricter)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // limit each IP to 5 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Auth slowdown for repeated failed attempts
+const authSlowdown = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 3, // limit each IP to 3 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Login limiter by email (more specific)
+const loginLimiterByEmail = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 3, // limit each email to 3 login attempts per windowMs
+  keyGenerator: (req) => req.body.email || req.ip,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// ===== RATE LIMITING (additions) =====
+/**
+ * Prefer per-user key after auth; fallback to IP for unauthenticated requests.
+ * This reduces shared-IP head-of-line blocking without changing login/signup behavior.
+ */
+const keyByUserOrIp = (req) => {
+  try {
+    // If the app already sets req.user (JWT middleware), prefer it
+    if (req.user && (req.user.id || req.user._id)) {
+      return String(req.user.id || req.user._id);
     }
-    next();
-  });
-}
+  } catch (_) {}
+  return req.ip;
+};
 
-// MongoDB Connection - Mongo uri exposure vulnerability fixed by Kasundi
-const mongoURI = process.env.MONGO_URI || "mongodb://localhost:27017/vehicle_services";
-mongoose.connect(mongoURI)
-.then(() => console.log("MongoDB Connected"))
-.catch((err) => console.error("MongoDB Connection Error:", err));
+// Lighter limiter for read-heavy GET endpoints (lists/aggregates)
+const readLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: keyByUserOrIp,
+});
+
+// Stricter limiter for admin-like management endpoints
+const adminLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: keyByUserOrIp,
+});
+// ===== END additions =====
+
+// Apply standard limiter to sensitive routes
+app.use([
+  '/upload',
+  '/addproduct',
+  '/removeproduct',
+  '/updateproduct/:id',
+  '/addbooking',
+  '/updateBookingStatus2/:id',
+  '/updateBookingDetails/:id',
+  '/deleteBookingRequest/:id',
+  '/addservice',
+  '/deleteServices/:id',
+  '/updateservice/:id',
+  '/issues',
+  '/issues/:id',
+  '/order',
+  '/order/:id',
+  '/customers',
+  '/customers/:id',
+  '/users',
+  '/users/:id',
+  '/product/:id',
+  '/product/quantity',
+], standardLimiter);
+
+// Apply auth limiters to authentication endpoints
+app.use(['/signup', '/login', '/adminsignup', '/adminlogin'], authLimiter);
+
+
+// Database Connection With MongoDB
+mongoose.connect("mongodb+srv://vehicleitp:16873Myno@test.fw5mj0t.mongodb.net/itpdb");
 
 //API Creation
 
@@ -161,27 +166,7 @@ const storage = multer.diskStorage({
     }
 })
 
-const upload = multer({
-    storage: storage,
-    limits: { 
-        fileSize: 2 * 1024 * 1024 // 2MB limit
-    },
-    fileFilter: (req, file, cb) => {
-        const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png'];
-        const allowedExts = ['.jpg', '.jpeg', '.png'];
-        
-        if (!allowedMimes.includes(file.mimetype)) {
-            return cb(new Error('Invalid file type. Only JPEG and PNG images are allowed.'), false);
-        }
-        
-        const ext = path.extname(file.originalname).toLowerCase();
-        if (!allowedExts.includes(ext)) {
-            return cb(new Error('Invalid file extension. Only .jpg, .jpeg, and .png files are allowed.'), false);
-        }
-        
-        cb(null, true);
-    }
-})
+const upload = multer({storage:storage})
 
 //Creating upload endpoint for images
 app.use('/images',express.static('upload/images'))
@@ -193,14 +178,58 @@ app.post("/upload",upload.single('product'),(req,res)=>{
     })
 })
 
+//Schema for Creating Products
+
+/*const Product = mongoose.model("Product",{
+    id:{
+        type: Number,
+        required:true,
+    },
+    name:{
+        type:String,
+        required:true,
+
+    },
+    category:{
+        type:String,
+        required:true,
+    },
+    brand:{
+        type:String,
+        required:true,
+    },
+    new_price:{
+        type:Number,
+        required:true,
+    },
+    old_price:{
+        type:Number,
+        required:true,
+    },
+    description:{
+        type:String,
+        required:true,
+    },
+    quantity:{
+        type:Number,
+        required:true,
+    },
+    image:{
+        type:String,
+        required:true,
+    },
+    date:{
+        type:Date,
+        default:Date.now,
+    },
+    available:{
+        type:Boolean,
+        default:true,
+    }
+})*/
+
 app.post('/addproduct', async (req,res)=>{
     try {
-        // Validate input
-        const { error, value } = productSchema.validate(req.body, { allowUnknown: false });
-        if (error) {
-            return res.status(400).json({ success: false, error: error.details[0].message });
-        }
-
         const products = await Product.find({});
         let id = 1;
 
@@ -211,14 +240,14 @@ app.post('/addproduct', async (req,res)=>{
 
         const product = new Product({
             id: id,
-            name: value.name,
-            category: value.category,
-            brand: value.brand,
-            image: value.image,
-            new_price: value.new_price,
-            old_price: value.old_price,
-            description: value.description,
-            quantity: value.quantity,
+            name: req.body.name,
+            category: req.body.category,
+            brand: req.body.brand,
+            image: req.body.image,
+            new_price: req.body.new_price,
+            old_price: req.body.old_price,
+            description: req.body.description,
+            quantity: Number(req.body.quantity),
         });
 
         console.log(product);
@@ -226,7 +255,7 @@ app.post('/addproduct', async (req,res)=>{
         console.log("Saved");
         res.json({
             success: true,
-            name: value.name,
+            name: req.body.name,
         });
     } catch (error) {
         console.error("Error while adding product:", error);
@@ -238,71 +267,51 @@ app.post('/addproduct', async (req,res)=>{
 // Creating API for deleting Product
 
 app.post('/removeproduct',async (req,res)=>{
-    try {
-        // Validate input
-        const { error, value } = Joi.object({
-            id: Joi.number().integer().positive().required(),
-            name: Joi.string().min(1).max(100).trim().required()
-        }).validate(req.body, { allowUnknown: false });
-        
-        if (error) {
-            return res.status(400).json({ success: false, error: error.details[0].message });
-        }
-
-        await Product.findOneAndDelete({id: value.id});
-        console.log("Removed");
-        res.json({
-            success:true,
-            name: value.name,
-        });
-    } catch (error) {
-        console.error("Error while removing product:", error);
-        res.status(500).json({ success: false, error: "Internal server error" });
-    }
+    await Product.findOneAndDelete({id:req.body.id});
+    console.log("Removed");
+    res.json({
+        success:true,
+        name:req.body.name,
+    })
 })
 
 // Creating API for getting all products
 
-app.get('/allproducts', requireAuth, async (req, res)=>{
+app.get('/allproducts', readLimiter, async (req, res)=>{ // rate-limit: added
     let products = await Product.find({})
     console.log("All Products Fetched");
     res.send(products);
 })
 
-const port = process.env.PORT || 5000;
-
 app.listen(port,(error)=>{
     if(!error){
         console.log("Server Running on Port " + port)
     }else{
-        console.log("Error : " + error)
+        console.log("Error : " + errror)
     }
 })
 
 // Creating API for update product
 app.put('/updateproduct/:id', async (req, res) => {
     try {
-        // Validate productId
-        const { error: idError, value: productId } = Joi.number().integer().positive().required().validate(req.params.id);
-        if (idError) {
-            return res.status(400).json({ success: false, error: 'Invalid product ID' });
-        }
+        const productId = req.params.id;
 
-        // Validate input data
-        const { error, value } = productSchema.validate(req.body, { allowUnknown: false });
-        if (error) {
-            return res.status(400).json({ success: false, error: error.details[0].message });
-        }
-
-        const product = await Product.findOneAndUpdate(
-            { id: productId }, 
-            value, 
-            { new: true, runValidators: true }
-        );
+        const product = await Product.findOne({ id: productId });
 
         if (!product) {
             return res.status(404).json({ success: false, error: 'Product not found' });
         }
+
+        product.name = req.body.name || product.name;
+        product.category = req.body.category || product.category;
+        product.brand = req.body.brand || product.brand;
+        product.image = req.body.image || product.image;
+        product.new_price = req.body.new_price || product.new_price;
+        product.old_price = req.body.old_price || product.old_price;
+        product.description = req.body.description || product.description;
+        product.quantity = req.body.quantity || product.quantity;
+
+        await product.save();
 
         console.log("Updated Product:", product);
         res.json({ success: true, product });
@@ -331,7 +340,7 @@ app.get('/product/:id', async (req, res) => {
     }
 });
 
-app.get('/lowStockProducts', requireAuth, hasRole(['admin']), async (req, res) => {
+app.get('/lowStockProducts', async (req, res) => {
     try {
         let products = await Product.find({});
         
@@ -350,7 +359,7 @@ app.get('/lowStockProducts', requireAuth, hasRole(['admin']), async (req, res) =
     }
 });
 
-app.get('/processingOrdersCount', requireAuth, hasRole(['admin']), async (req, res) => {
+app.get('/processingOrdersCount', async (req, res) => {
     try {
         let orders = await Order.find({});
 
@@ -367,67 +376,75 @@ app.get('/processingOrdersCount', requireAuth, hasRole(['admin']), async (req, r
     }
 });
 
-app.post('/signup',async (req,res) =>{
-    try {
-        // Validate input
-        const { error, value } = userSchema.validate(req.body, { allowUnknown: false });
-        if (error) {
-            return res.status(400).json({success:false,errors: error.details[0].message});
-        }
-
-        let check = await Users.findOne({email: value.email});
-        if(check){
-            return res.status(400).json({success:false,errors:"existing user found with same email address"});
-        }
-        
-        let cart = {};
-        for (let i = 0; i < 300; i++){
-            cart[i]=0;
-        }
-        
-        const user = new Users({
-            name: value.name,
-            email: value.email,
-            password: value.password,
-            cartData: cart,
-        });
-
-        await user.save();
-
-        const data = {
-            user: {
-                id: user.id
-            }
-        };
-
-        const token = jwt.sign(data, process.env.JWT_SECRET || "default_jwt_secret");
-        res.json({success:true,token});
-    } catch (error) {
-        console.error("Error during signup:", error);
-        res.status(500).json({success:false,errors:"Internal server error"});
+/*const Users = mongoose.model('Users',{
+    name:{
+        type:String,
+    },
+    email:{
+        type:String,
+        unique:true,
+    },
+    password:{
+        type:String,
+    },
+    cartData:{
+        type:Object,   
+    },
+    date:{
+        type:Date,
+        default:Date.now,
     }
+})*/
+
+app.post('/signup',async (req,res) =>{
+
+    let check = await Users.findOne({email:req.body.email});
+    if(check){
+        return res.status(400).json({success:false,errors:"eixsting user found with same email address"})
+
+    }
+    let cart = {};
+    for (let i = 0; i < 300; i++){
+        cart[i]=0;
+    }
+    const user = new Users({
+        name:req.body.name,
+        email:req.body.email,
+        password:req.body.password,
+        cartData:cart,
+    })
+
+    await user.save();
+
+    const data ={
+        user:{
+            id:user.id
+        }
+    }
+
+    const token = jwt.sign(data, 'secret_ecom');
+    res.json({success:true,token})
 })
 
 
 // Route to handle admin signup
-app.post('/adminsignup', requireAuth, hasRole(['admin']), async (req, res) => {
+app.post('/adminsignup', async (req, res) => {
     try {
-        // Block mass assignment - only allow specific fields
-        const allowed = pick(req.body, ['name', 'email', 'password']);
-        
+        const { name, email, password, roles } = req.body;
+
         // Check if admin with the same email already exists
-        const existingAdmin = await Admins.findOne({ email: allowed.email });
+        const existingAdmin = await Admins.findOne({ email });
 
         if (existingAdmin) {
             return res.status(400).json({ success: false, errors: "An admin with this email already exists" });
         }
 
-        // Create a new Admin document - server sets role, not client
-        const newAdmin = new Admins({
-            name: allowed.name,
-            email: allowed.email,
-            password: allowed.password,
-            role: ['admin']  // Server sets role, not from client input
+        // Create a new Admin document
+        const newAdmin = new Admin({
+            name,
+            email,
+            password,
+            role: roles || [],  // Assign roles array to 'role' field
         });
 
         // Save the newAdmin document to the database
@@ -452,78 +469,59 @@ app.post('/adminsignup', requireAuth, hasRole(['admin']), async (req, res) => {
 });
 
 app.post('/login', async (req,res) => {
-    try {
-        // Validate input
-        const { error, value } = loginSchema.validate(req.body, { allowUnknown: false });
-        if (error) {
-            return res.status(400).json({success:false,errors: error.details[0].message});
-        }
-
-        let user = await Users.findOne({email: value.email});
-        if(user){
-            const passCompare = value.password === user.password;
-            if(passCompare){
-                const data = {
-                    user:{
-                        id: user.id
-                    }
+    let user = await Users.findOne({email:req.body.email});
+    if(user){
+        const passCompare = req.body.password === user.password;
+        if(passCompare){
+            const data = {
+                user:{
+                    id: user.id
                 }
-                const token = jwt.sign(data, process.env.JWT_SECRET || "default_jwt_secret");
-                res.json({success:true,token});
-            } else {
-                res.json({success:false,errors:"Invalid credentials"});
             }
-        } else {
-            res.json({success:false,errors:"Invalid credentials"});
+            const token = jwt.sign(data, 'secret_ecom');
+            res.json({success:true,token});
         }
-    } catch (error) {
-        console.error("Error during login:", error);
-        res.status(500).json({success:false,errors:"Internal server error"});
+        else{
+            res.json({success:false,errors:"wrong Password"});
+        }
+    }
+    else{
+        res.json({success:false,errors:"wrong Email Id"})
     }
 })
 
 app.post('/adminlogin', async (req,res) => {
-    try {
-        // Validate input
-        const { error, value } = loginSchema.validate(req.body, { allowUnknown: false });
-        if (error) {
-            return res.status(400).json({success:false,errors: error.details[0].message});
+    let Admin = await Admins.findOne({email:req.body.email});
+    if(Admin){
+        const passCompare = req.body.password === Admin.password;
+        if(passCompare){
+            const data = {
+                Admin: {
+                    id: Admin._id,
+                    name: Admin.name,
+                    email: Admin.email,
+                    role: Admin.role,
+                }
+            };
+            const token = jwt.sign(data, 'secret_ecom');
+            res.json({success:true,token});
         }
-
-        let Admin = await Admins.findOne({email: value.email});
-        if(Admin){
-            const passCompare = value.password === Admin.password;
-            if(passCompare){
-                const data = {
-                    Admin: {
-                        id: Admin._id,
-                        name: Admin.name,
-                        email: Admin.email,
-                        role: Admin.role,
-                    }
-                };
-                const token = jwt.sign(data, process.env.JWT_SECRET || "default_jwt_secret");
-                res.json({success:true,token});
-            } else {
-                res.json({success:false,errors:"Invalid credentials"});
-            }
-        } else {
-            res.json({success:false,errors:"Invalid credentials"});
+        else{
+            res.json({success:false,errors:"wrong Password"});
         }
-    } catch (error) {
-        console.error("Error during admin login:", error);
-        res.status(500).json({success:false,errors:"Internal server error"});
+    }
+    else{
+        res.json({success:false,errors:"wrong Email Id"})
     }
 })
 
-app.get('/newcollections', requireAuth, async (req,res) =>{
+app.get('/newcollections', async (req,res) =>{
     let products = await Product.find({});
     let newcollection = products.slice(1).slice(-8);
     console.log("NewCollection Fetched");
     res.send(newcollection);
 })
 
-// jwt secret exposure vulnerability was fixed by kasundi
 const fetchUser = async (req,res,next)=>{
     const token = req.header('auth-token');
     if(!token){
@@ -531,76 +529,13 @@ const fetchUser = async (req,res,next)=>{
     }
     else{
         try{
-            const data = jwt.verify(token,process.env.JWT_SECRET || "default_jwt_secret");
+            const data = jwt.verify(token, 'secret_ecom');
             req.user = data.user;
             next();
         } catch(error){
             res.status(401).send({errors:"please authenticate using valid token"})
         }
     }
-}
-
-// ===== SECURITY HELPERS =====
-// Extract bearer token and verify (re-use existing secret/config)
-const JWT_SECRET = process.env.JWT_SECRET || process.env.SECRET || 'changeme';
-
-// Auth: requires any logged-in user (populates req.user = { id, role, ... })
-function requireAuth(req, res, next) {
-  try {
-    const h = req.headers.authorization || '';
-    const token = h.startsWith('Bearer ') ? h.slice(7) : null;
-    if (!token) return res.status(401).json({ message: 'Auth required' });
-    const payload = jwt.verify(token, JWT_SECRET);
-    // normalize user/admin token shapes (data.user vs data.Admin from audit)
-    const u = payload?.data?.user || payload?.data?.User || payload?.data?.Admin || payload?.user || payload?.admin || payload;
-    if (!u) return res.status(401).json({ message: 'Invalid token' });
-    req.user = {
-      id: u._id || u.id,
-      role: u.role || u.userRole || (u.isAdmin ? 'admin' : 'user') || 'user',
-      email: u.email
-    };
-    return next();
-  } catch (e) {
-    return res.status(401).json({ message: 'Invalid/expired token' });
-  }
-}
-
-// RBAC: require one of the allowed roles
-function hasRole(roles = []) {
-  return (req, res, next) => {
-    if (!req.user) return res.status(401).json({ message: 'Auth required' });
-    if (!roles.includes(req.user.role)) {
-      return res.status(403).json({ message: 'Forbidden: insufficient role' });
-    }
-    next();
-  };
-}
-
-// Ownership guard factory for ID-based resources
-// Attempts ownership by common fields; allows admins regardless.
-async function assertOwnershipOrAdmin(Model, idSelector, ownerFields = ['userId','ownerId','createdBy','customerId','assigned_to']) {
-  return async (req, res, next) => {
-    try {
-      if (!req.user) return res.status(401).json({ message: 'Auth required' });
-      if (req.user.role === 'admin') return next();
-      const id = idSelector(req);
-      if (!id) return res.status(400).json({ message: 'Invalid id' });
-      const doc = await Model.findById(id).lean();
-      if (!doc) return res.status(404).json({ message: 'Not found' });
-      const owns = ownerFields.some(f => (doc[f]?.toString?.() || doc[f]) === (req.user.id?.toString?.() || req.user.id));
-      if (!owns) return res.status(403).json({ message: 'Forbidden: not owner' });
-      return next();
-    } catch (e) {
-      return res.status(500).json({ message: 'Ownership check failed' });
-    }
-  };
-}
-
-// Allowlist body fields to prevent mass-assignment
-function pick(obj, allowed = []) {
-  const out = {};
-  allowed.forEach(k => { if (obj[k] !== undefined) out[k] = obj[k]; });
-  return out;
 }
 
 app.post('/addtocart', fetchUser, async (req, res) => {
@@ -709,25 +644,64 @@ const clearCart = async (userId) => {
     }
 };
 
-// email and password exposure vulnerability was fixed by kasundi
+
+// Import necessary modules
+/*const Order = mongoose.model("Order", {
+    orderId: {
+        type: String,
+        required: true,
+    },
+    fullName: {
+        type: String,
+        required: true,
+    },
+    email: {
+        type: String,
+        required: true,
+    },
+    address: {
+        type: String,
+        required: true,
+    },
+    contact: {
+        type: String,
+        required: true,
+    },
+    paymentMethod: {
+        type: String,
+        required: true,
+    },
+    items: {
+        type: Array,
+        required: true,
+    },
+    totalAmount: {
+        type: Number,
+        required: true,
+    },
+    orderDate: {
+        type: Date,
+        default: Date.now,
+    },
+    status: {
+        type: String,
+        default: "processing",
+    },
+});*/
+
 // Create a transporter using SMTP transport
 const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
-        user: process.env.EMAIL_ADD, 
-        pass: process.env.EMAIL_PW
+        user: 'pprajeshvara@gmail.com',
+        pass: 'wjjm bzhn lxkp ennh'
     }
 });
 
 app.post('/checkout',fetchUser, async (req, res) => {
     try {
-        // Validate input
-        const { error, value } = orderSchema.validate(req.body, { allowUnknown: false });
-        if (error) {
-            return res.status(400).json({ success: false, error: error.details[0].message });
-        }
 
-        const { fullName, email, address, contact, paymentMethod, items, totalAmount } = value;
+        const { fullName, email, address, contact, paymentMethod, items, totalAmount } = req.body;
 
         const orderId = generateOrderId();
 
@@ -747,7 +721,7 @@ app.post('/checkout',fetchUser, async (req, res) => {
         const userId = req.user.id;
 
         await clearCart(userId);
-        
+
         const mailOptions = {
             from: 'pprajeshvara@gmail.com',
             to: email,
@@ -784,11 +758,10 @@ app.get('/product/quantity/:id', async (req, res) => {
 });
 
 // Define route for fetching all orders data
-app.get('/orders', requireAuth, async (req, res) => {
+app.get('/orders', readLimiter, async (req, res) => { // rate-limit: added
     try {
-        // Scope orders based on user role
-        const query = req.user.role === 'admin' ? {} : { userId: req.user.id };
-        const orders = await Order.find(query);
+
+        const orders = await Order.find({});
 
         res.json({ success: true, orders });
     } catch (error) {
@@ -798,7 +771,7 @@ app.get('/orders', requireAuth, async (req, res) => {
 });
 
 // Define route for delete order
-app.delete('/order/:id', requireAuth, hasRole(['admin']), async (req, res) => {
+app.delete('/order/:id', async (req, res) => {
     try {
         const orderId = req.params.id;
         const deletedOrder = await Order.findOneAndDelete({ orderId });
@@ -848,7 +821,7 @@ app.put('/order/:id', async (req, res) => {
     }
 });
 
-app.get('/processingOrders', requireAuth, hasRole(['admin']), async (req, res) => {
+app.get('/processingOrders', readLimiter, async (req, res) => { // rate-limit: added
     try {
         const processingOrdersCount = await Order.countDocuments({ status: 'processing' });
         res.json({ success: true, processingOrdersCount });
@@ -858,7 +831,7 @@ app.get('/processingOrders', requireAuth, hasRole(['admin']), async (req, res) =
     }
 });
 
-app.get('/shippedOrders', requireAuth, hasRole(['admin']), async (req, res) => {
+app.get('/shippedOrders', readLimiter, async (req, res) => { // rate-limit: added
     try {
         const shippedOrdersCount = await Order.countDocuments({ status: 'shipped' });
         res.json({ success: true, shippedOrdersCount });
@@ -869,7 +842,7 @@ app.get('/shippedOrders', requireAuth, hasRole(['admin']), async (req, res) => {
 });
 
 // Creating API to get the total amount of all orders
-app.get('/totalAmountOfOrders', requireAuth, hasRole(['admin']), async (req, res) => {
+app.get('/totalAmountOfOrders', readLimiter, async (req, res) => { // rate-limit: added
     try {
         // Fetch all orders
         const orders = await Order.find({});
@@ -885,7 +858,7 @@ app.get('/totalAmountOfOrders', requireAuth, hasRole(['admin']), async (req, res
 });
 
 
-app.get('/deliveredOrders', requireAuth, hasRole(['admin']), async (req, res) => {
+app.get('/deliveredOrders', readLimiter, async (req, res) => { // rate-limit: added
     try {
         const deliveredOrdersCount = await Order.countDocuments({ status: 'delivered' });
         res.json({ success: true, deliveredOrdersCount });
@@ -896,7 +869,21 @@ app.get('/deliveredOrders', requireAuth, hasRole(['admin']), async (req, res) =>
 });
 
 // Creating API to get the total amount of all orders
-app.get('/totalAmountOfOrders', requireAuth, hasRole(['admin']), async (req, res) => {
+app.get('/totalAmountOfOrders', async (req, res) => {
+    try {
+        // Fetch all orders
+        const orders = await Order.find({});
+        // Calculate total amount by summing up 'totalAmount' field of each order
+        const totalAmountOfOrders = orders.reduce((total, order) => total + order.totalAmount, 0);
+
+        res.json({ success: true, totalAmountOfOrders });
+    } catch (error) {
+        console.error("Error while fetching total amount of all orders:", error);
+        res.status(500).json({ success: false, error: "Internal server error" });
+    }
+});
+
+app.get('/totalAmountOfDelivered', readLimiter, async (req, res) => { // rate-limit: added
     try {
         // Fetch all orders
         const orders = await Order.find({});
@@ -911,7 +898,7 @@ app.get('/totalAmountOfOrders', requireAuth, hasRole(['admin']), async (req, res
     }
 });
 
-app.get('/totalAmountOfDelivered', requireAuth, hasRole(['admin']), async (req, res) => {
+app.get('/totalAmountOfDelivered', async (req, res) => {
     try {
         // Fetch orders with status 'delivered'
         const deliveredOrders = await Order.find({ status: 'delivered' });
@@ -926,7 +913,7 @@ app.get('/totalAmountOfDelivered', requireAuth, hasRole(['admin']), async (req, 
     }
 });
 
-app.get('/totalAmountOfPending', requireAuth, hasRole(['admin']), async (req, res) => {
+app.get('/totalAmountOfPending', readLimiter, async (req, res) => { // rate-limit: added
     try {
         // Fetch orders with status 'shipped' or 'processing'
         const pendingOrders = await Order.find({ status: { $in: ['shipped', 'processing'] } });
@@ -948,19 +935,13 @@ app.get('/totalAmountOfPending', requireAuth, hasRole(['admin']), async (req, re
 
 const Booking = require('./models/BookingModel');
 
-app.post('/addbooking', requireAuth, async (req, res) => {
+app.post('/addbooking', async (req, res) => {
     try {
-      // Validate input
-      const { error, value } = bookingSchema.validate(req.body, { allowUnknown: false });
-      if (error) {
-        return res.status(400).json({ error: error.details[0].message });
-      }
+      // Extract form data from request body
+      const formData = req.body;
   
-      // Block mass assignment - only allow specific fields
-      const allowed = pick(value, ['ownerName', 'email', 'phone', 'specialNotes', 'location', 'serviceType', 'vehicleModel', 'vehicleNumber', 'date', 'time']);
-      
       // Create a new booking instance
-      const newBooking = new Booking(allowed);
+      const newBooking = new Booking(formData);
   
       // Save the booking to the database
       await newBooking.save();
@@ -980,32 +961,23 @@ app.post('/addbooking', requireAuth, async (req, res) => {
 app.put('/updateBookingStatus2/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        
-        // Validate status
-        const { error, value } = Joi.object({
-            status: Joi.string().valid('pending', 'accepted', 'in_progress', 'completed', 'cancelled').required()
-        }).validate(req.body, { allowUnknown: false });
-        
-        if (error) {
-            return res.status(400).json({ error: error.details[0].message });
-        }
+        const { status } = req.body;
 
         const updatedBooking = await Booking.findByIdAndUpdate(
             id,
-            { $set: { status: value.status } }, // Update status
-            { new: true, runValidators: true }
+            { $set: { status } }, // Update status
+            { new: true }
         );
-        
-        if (!updatedBooking) {
-            return res.status(404).json({ error: 'Booking not found' });
-        }
-        
         if (updatedBooking.status === 'accepted') {
             const { email } = updatedBooking;
             const subject = 'Booking Accepted';
             const text = 'We are excited to confirm your booking! Your service request has been accepted. We look forward to serving you on Booking Date at Booking Time. Should you have any questions, feel free to reach out. Thank you for choosing us.';
       
             await sendEmail(email, subject, text);
+          }
+
+        if (!updatedBooking) {
+            return res.status(404).json({ error: 'Booking not found' });
         }
 
         res.status(200).json({ message: 'Booking status updated successfully', updatedBooking });
@@ -1017,23 +989,13 @@ app.put('/updateBookingStatus2/:id', async (req, res) => {
   
 
     // Update booking details route
-    app.put('/updateBookingDetails/:id', requireAuth, hasRole(['admin']), async (req, res) => {
+    app.put('/updateBookingDetails/:id', async (req, res) => {
         try {
           const { id } = req.params;
-          
-          // Validate input
-          const { error, value } = bookingSchema.validate(req.body, { allowUnknown: false });
-          if (error) {
-            return res.status(400).json({ error: error.details[0].message });
-          }
-          
-          // Block mass assignment - only allow specific fields
-          const allowed = pick(value, ['ownerName', 'email', 'phone', 'specialNotes', 'location', 'serviceType', 'vehicleModel', 'vehicleNumber', 'date', 'time']);
-          
           const updatedBooking = await Booking.findByIdAndUpdate(
             id,
-            allowed, // Update booking details
-            { new: true, runValidators: true }
+            req.body, // Update booking details
+            { new: true }
           );
     
         if (!updatedBooking) {
@@ -1046,48 +1008,42 @@ app.put('/updateBookingStatus2/:id', async (req, res) => {
         }
         }); 
     
-    //get all booking details
-    app.get('/allBookingRequest', requireAuth, hasRole(['admin']), async (req, res) => {
-        try {
-            const data = await Booking.find();
-            res.json(data);
-            console.log("All Booking Requests Fetched");
-    
-        } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: 'Server error' });
-        }
-        }
-    );  
+        //get all booking details
+        app.get('/allBookingRequest', async (req, res) => {
+            try {
+              const data = await Booking.find();
+              res.json(data);
+              console.log("All Booking Requests Fetched");
         
+            } catch (error) {
+              console.error(error);
+              res.status(500).json({ message: 'Server error' });
+            }
+          }
+        );
+
+        
+        
+
     //pathum's Service Routes
 
 const Service = require('./models/ServiceModel');
 
 // POST route for adding a new service
-app.post('/addservice', requireAuth, hasRole(['admin']), upload.single('image'), async (req, res) => {
+app.post('/addservice', upload.single('image'), async (req, res) => {
     try {
-        // Validate input
-        const { error, value } = serviceSchema.validate(req.body, { allowUnknown: false });
-        if (error) {
-            return res.status(400).json({ error: error.details[0].message });
-        }
-
-        // Block mass assignment - only allow specific fields
-        const allowed = pick(value, ['serviceTitle', 'estimatedHour', 'details', 'image']);
-
         // Create new service object
         const newService = new Service({
-            serviceTitle: allowed.serviceTitle,
-            estimatedHour: allowed.estimatedHour,
-            details: allowed.details,
-            imagePath: allowed.image, // Save image path
+            serviceTitle: req.body.serviceTitle,
+            estimatedHour: req.body.estimatedHour,
+            details: req.body.details,
+            imagePath: req.body.image, // Save image path
         });
         // Save the service to MongoDB
         await newService.save();
         res.json({
             success: true,
-            name: allowed.serviceTitle,
+            name: req.body.name,
         });
     } catch (error) {
         console.error('Error adding service:', error);
@@ -1096,11 +1052,11 @@ app.post('/addservice', requireAuth, hasRole(['admin']), upload.single('image'),
 });
 
 // 3. Create API endpoint to retrieve data
-app.get('/allServices', requireAuth, async (req, res) => {
+app.get('/allServices', async (req, res) => {
     try {
       const data = await Service.find();
       res.json(data);
-      console.log("All Services Fetched");
+      console.log("All Booking Requests Fetched");
 
     } catch (error) {
       console.error(error);
@@ -1110,7 +1066,7 @@ app.get('/allServices', requireAuth, async (req, res) => {
 
 
   // Define route for deleting booking requests
-app.delete('/deleteBookingRequest/:id', requireAuth, hasRole(['admin']), async (req, res) => {
+app.delete('/deleteBookingRequest/:id', async (req, res) => {
     const requestId = req.params.id;
   
     try {
@@ -1126,42 +1082,30 @@ app.delete('/deleteBookingRequest/:id', requireAuth, hasRole(['admin']), async (
   
   
   // Define route for deleting Services
-app.delete('/deleteServices/:id', requireAuth, hasRole(['admin']), async (req, res) => {
+app.delete('/deleteServices/:id', async (req, res) => {
     const requestId = req.params.id;
   
     try {
       // Find the Services by ID and delete it
       await Service.findByIdAndDelete(requestId);
-      res.status(200).send('Service deleted successfully');
+      res.status(200).send('Booking request deleted successfully');
     } catch (error) {
-      console.error('Error deleting service:', error);
+      console.error('Error deleting booking request:', error);
       res.status(500).send('Internal server error');
     }
   });
 
   // Add a new route to handle service updates
-app.put('/updateservice/:id', requireAuth, hasRole(['admin']), async (req, res) => {
+app.put('/updateservice/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        
-        // Validate input
-        const { error, value } = serviceSchema.validate(req.body, { allowUnknown: false });
-        if (error) {
-            return res.status(400).json({ error: error.details[0].message });
-        }
-
-        // Block mass assignment - only allow specific fields
-        const allowed = pick(value, ['serviceTitle', 'estimatedHour', 'details', 'image']);
+        const updatedService = req.body;
 
         // Find and update the service in the database
-        const updatedService = await Service.findByIdAndUpdate(id, allowed, { new: true, runValidators: true });
-        
-        if (!updatedService) {
-            return res.status(404).json({ error: 'Service not found' });
-        }
-        
+        await Service.findByIdAndUpdate(id, updatedService);
         console.log("Service updated");
-        res.status(200).json({ message: 'Service updated successfully', service: updatedService });
+
+        res.status(200).json({ message: 'Service updated successfully' });
     } catch (error) {
         console.error('Error updating Service:', error);
         res.status(500).json({ error: 'Server error' });
@@ -1173,20 +1117,30 @@ app.put('/updateservice/:id', requireAuth, hasRole(['admin']), async (req, res) 
 const Admin = require("./models/OnlineShopModels/Admin");
 
   //Route for save new Issue
-app.post('/issues', requireAuth, async (request, response) => {
+app.post('/issues', async (request, response) => {
     try {
-        // Validate input
-        const { error, value } = issueSchema.validate(request.body, { allowUnknown: false });
-        if (error) {
+        if (
+            !request.body.cid ||
+            !request.body.Cname ||
+            !request.body.Cnic ||
+            !request.body.Ccontact ||
+            !request.body.Clocation ||
+            !request.body.Cstatus
+        ) {
             return response.status(400).send({
-                message: error.details[0].message,
+                message: 'Send all required fields: cid, Cname, Cnic, Ccontact, Clocation, Cstatus',
             });
         }
+        const newIssue = {
+            cid: request.body.cid,
+            Cname: request.body.Cname,
+            Cnic: request.body.Cnic,
+            Ccontact: request.body.Ccontact,
+            Clocation: request.body.Clocation,
+            Cstatus: request.body.Cstatus,
+        };
+        const issue = await Issue.create(newIssue);
 
-        // Block mass assignment - only allow specific fields
-        const allowed = pick(value, ['cid', 'Cname', 'Cnic', 'Ccontact', 'Clocation', 'Cstatus']);
-
-        const issue = await Issue.create(allowed);
         return response.status(201).send(issue);
     } catch (error) {
         console.log(error.message);
@@ -1195,7 +1149,7 @@ app.post('/issues', requireAuth, async (request, response) => {
 });
 
 //Route for get all books from database
-app.get('/issues', requireAuth, async (request, response) => {
+app.get('/issues', async (request, response) => {
     try {
         const issues = await Issue.find({});
         return response.status(200).json({
@@ -1203,58 +1157,60 @@ app.get('/issues', requireAuth, async (request, response) => {
             data: issues
         });
     } catch (error) {
-        console.log(error.message);
+        confirm.log(error.message);
         response.status(500).send({ message: error.message });
     }
 });
 
 //Route for get one book from database by id
-app.get('/issues/:id', requireAuth, async (request, response) => {
+app.get('/issues/:id', async (request, response) => {
     try {
         const { id } = request.params;
 
         const issue = await Issue.findById(id);
-        if (!issue) {
-            return response.status(404).json({ message: 'Issue not found' });
-        }
         return response.status(200).json(issue);
     } catch (error) {
-        console.log(error.message);
+        confirm.log(error.message);
         response.status(500).send({ message: error.message });
     }
 });
 
 //Route for update a Book
-app.put('/issues/:id', requireAuth, async (request, response) => {
+app.put('/issues/:id', standardLimiter, async (request, response) => { // rate-limit: added
     try {
-        // Validate input
-        const { error, value } = issueSchema.validate(request.body, { allowUnknown: false });
-        if (error) {
+        if (
+            !request.body.cid ||
+            !request.body.Cname ||
+            !request.body.Cnic ||
+            !request.body.Ccontact ||
+            !request.body.Clocation ||
+            !request.body.Cstatus
+        ) {
             return response.status(400).send({
-                message: error.details[0].message,
+                message: 'Send all required fields: cid, Cname, Cnic, Ccontact, Clocation, Cstatus',
             });
         }
 
         const { id } = request.params;
 
-        // Block mass assignment - only allow specific fields
-        const allowed = pick(value, ['cid', 'Cname', 'Cnic', 'Ccontact', 'Clocation', 'Cstatus']);
-        const result = await Issue.findByIdAndUpdate(id, allowed, { new: true, runValidators: true });
+        const result = await Issue.findByIdAndUpdate(id, request.body);
 
         if (!result) {
             return response.status(404).json({ message: 'Issue not found' });
         }
 
-        return response.status(200).json({ message: 'Issue update Successfully', issue: result });
+        return response.status(200).json({ message: 'Issue update Successfully' });
 
     } catch (error) {
         console.log(error.message);
         response.status(500).send({ message: error.message });
     }
+
+
 });
 
 //Route for Delete a issue 
-app.delete('/issues/:id', requireAuth, hasRole(['admin']), async (request, response) => {
+app.delete('/issues/:id', standardLimiter, async (request, response) => { // rate-limit: added
     try {
         const { id } = request.params;
 
@@ -1276,91 +1232,47 @@ app.delete('/issues/:id', requireAuth, hasRole(['admin']), async (request, respo
 
 const Customers = require("./models/customerModel");
 
-app.post("/customers/", requireAuth, hasRole(['admin']), (req, res) => {
-    try {
-        // Validate input
-        const { error, value } = customerSchema.validate(req.body, { allowUnknown: false });
-        if (error) {
-            return res.status(400).json({ msg: error.details[0].message });
-        }
-
-        // Block mass assignment - only allow specific fields
-        const allowed = pick(value, ['customerID', 'name', 'NIC', 'address', 'contactno', 'email', 'vType', 'vName', 'Regno', 'vColor', 'vFuel']);
-
-        Customers.create(allowed)
-            .then(() => res.json({ msg: "Customer added successfully" }))
-            .catch((err) => {
-                console.error("Error creating customer:", err);
-                res.status(400).json({ msg: "Customer adding failed" });
-            });
-    } catch (error) {
-        console.error("Error validating customer data:", error);
-        res.status(500).json({ msg: "Internal server error" });
-    }
+app.post("/customers/", (req, res) => {
+    Customers.create(req.body)
+        .then(() => res.json({ msg: "Customer added successfully" }))
+        .catch(() => res.status(400).json({ msg: "Custommer adding failed" }));
 });
 
-app.get("/customers/", requireAuth, hasRole(['admin']), (req, res) => {
+app.get("/customers/", (req, res) => {
 
     Customers.find()
         .then((customers) => res.json(customers))
-        .catch(() => res.status(400).json({ msg: "No customers" }));
+        .catch(() => rex.status(400).json({ msg: "No employee" }));
 });
 
-app.get("/customers/:id", requireAuth, async (req, res) => {
-    try {
-        const customer = await Customers.findById(req.params.id);
-        if (!customer) {
-            return res.status(404).json({ msg: "Customer not found" });
-        }
-        res.json(customer);
-    } catch (error) {
-        res.status(500).json({ msg: "Internal server error" });
-    }
+app.get("/customers/:id", (req, res) => {
+    Customers.findById(req.params.id)
+        .then((customers) => res.json(customers))
+        .catch(() => res.status(400).json({ msg: "cannot find this customer" }))
 });
 
-app.put("/customers/:id", requireAuth, hasRole(['admin']), (req, res) => {
-    try {
-        // Validate input
-        const { error, value } = customerSchema.validate(req.body, { allowUnknown: false });
-        if (error) {
-            return res.status(400).json({ msg: error.details[0].message });
-        }
-
-        // Block mass assignment - only allow specific fields
-        const allowed = pick(value, ['customerID', 'name', 'NIC', 'address', 'contactno', 'email', 'vType', 'vName', 'Regno', 'vColor', 'vFuel']);
-
-        Customers.findByIdAndUpdate(req.params.id, allowed, { runValidators: true, new: true })
-            .then((updatedCustomer) => {
-                if (!updatedCustomer) {
-                    return res.status(404).json({ msg: "Customer not found" });
-                }
-                res.json({ msg: "Update successfully", customer: updatedCustomer });
-            })
-            .catch((err) => {
-                console.error("Error updating customer:", err);
-                res.status(400).json({ msg: "Update fail" });
-            });
-    } catch (error) {
-        console.error("Error validating customer data:", error);
-        res.status(500).json({ msg: "Internal server error" });
-    }
+app.put("/customers/:id", (req, res) => {
+    Customers.findByIdAndUpdate(req.params.id, req.body)
+        .then(() => res.json({ msg: "Update successfully" }))
+        .catch(() => res.status(400).json({ msg: "Update fail" }))
+        ;
 });
 
-app.delete("/customers/:id", requireAuth, hasRole(['admin']), (req, res) => {
+app.delete("/customers/:id", (req, res) => {
     Customers.findByIdAndDelete(req.params.id).then(() =>
         res
             .json({ msg: "Delete successfully" }))
             .catch(() => res.status(400).json({ msg: "Delete fail" }));
 });
 
-app.get('/allusers', requireAuth, hasRole(['admin']), async (req, res)=>{
-    let users = await Admins.find({})
+app.get('/allusers',async (req, res)=>{
+    let users = await Admin.find({})
     console.log("All Users Fetched");
     res.send(users);
 })
 
-app.delete("/users/:id", requireAuth, hasRole(['admin']), (req, res) => {
-    Admins.findByIdAndDelete(req.params.id).then(() =>
+app.delete("/users/:id", adminLimiter, (req, res) => { // rate-limit: added
+    Admin.findByIdAndDelete(req.params.id).then(() =>
         res
             .json({ msg: "Delete successfully" }))
             .catch(() => res.status(400).json({ msg: "Delete fail" }));
