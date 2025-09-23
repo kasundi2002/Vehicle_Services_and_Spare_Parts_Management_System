@@ -28,8 +28,9 @@ router.post('/post/save', bookingLimiter, (req,res)=>{ // rate-limit: added
 
     newBooking.save((err)=>{
         if(err){
+            console.error("Error saving booking:", err);
             return res.status(400).json({
-                error:err
+                error: 'Bad request'
             });
         }
         return res.status(200).json({

@@ -147,6 +147,51 @@ mongoose.connect(mongoURI)
     .then(() => console.log("MongoDB Connected"))
     .catch((err) => console.error("MongoDB Connection Error:", err));
 
+// ====== SECURITY: response & error sanitizers (add above first route) ======
+const INTERNAL_ERROR = { error: 'Internal server error' };
+
+// Centralized error -> safe payload
+function sanitizeError(err) {
+  // Log server-side only (do NOT leak stack/message to clients)
+  try { console.error(err && err.stack ? err.stack : err); } catch (_) {}
+  return INTERNAL_ERROR;
+}
+
+// Tiny "pick" helpers (no new deps)
+function pick(obj, keys) {
+  const out = {};
+  for (const k of keys) if (obj && Object.prototype.hasOwnProperty.call(obj, k)) out[k] = obj[k];
+  return out;
+}
+function mapList(list, keys) {
+  return Array.isArray(list) ? list.map(x => pick(x, keys)) : [];
+}
+
+// Domain DTOs (adjust to your actual field names)
+function toPublicProduct(p) {
+  return pick(p, ['_id', 'id', 'name', 'category', 'brand', 'new_price', 'old_price', 'description', 'quantity', 'image', 'available']);
+}
+function toPublicAdmin(u) {
+  // no password/hash/salt/otp/secret fields!
+  return pick(u, ['_id', 'name', 'email', 'role', 'date']);
+}
+function toPublicBooking(b) {
+  return pick(b, ['_id', 'bookingId', 'ownerName', 'email', 'phone', 'status', 'location', 'serviceType', 'vehicleModel', 'vehicleNumber', 'date', 'time', 'specialNotes']);
+}
+function toPublicService(s) {
+  return pick(s, ['_id', 'serviceTitle', 'estimatedHour', 'details', 'imagePath', 'status']);
+}
+function toPublicCustomer(c) {
+  return pick(c, ['_id', 'customerID', 'name', 'NIC', 'address', 'contactno', 'email', 'vType', 'vName', 'Regno', 'vColor', 'vFuel', 'createdAt', 'updatedAt']);
+}
+function toPublicInventory(i) {
+  return pick(i, ['_id', 'InventoryType', 'InventoryName', 'Vendor', 'UnitPrice', 'UnitNo', 'Description', 'createdAt', 'updatedAt']);
+}
+function toPublicIssue(i) {
+  return pick(i, ['_id', 'cid', 'Cname', 'Cnic', 'Ccontact', 'Clocation', 'Cstatus', 'createdAt', 'updatedAt']);
+}
+// ====== END security helpers ======
+
 //API Creation
 
 app.get("/", (req, res) => {
@@ -265,9 +310,14 @@ app.post('/removeproduct', async (req, res) => {
 // Creating API for getting all products
 
 app.get('/allproducts', requireAuth, async (req, res)=>{
-    let products = await Product.find({})
-    console.log("All Products Fetched");
-    res.send(products);
+    try {
+        const products = await Product.find({}).lean();
+        console.log("All Products Fetched");
+        return res.json(products.map(toPublicProduct));
+    } catch (error) {
+        console.error("Error fetching products:", error);
+        return res.status(500).json(sanitizeError(error));
+    }
 })
 
 const port = process.env.PORT || 5000;
@@ -743,9 +793,14 @@ app.post('/removefromcart', fetchUser, async (req, res) => {
 
 
 app.post('/getcart', fetchUser, async (req, res) => {
-    console.log("GetCart");
-    let userData = await Users.findOne({ _id: req.user.id });
-    res.json(userData.cartData)
+    try {
+        console.log("GetCart");
+        let userData = await Users.findOne({ _id: req.user.id });
+        return res.json({ cartData: userData?.cartData ?? {} });
+    } catch (error) {
+        console.error("Error fetching cart:", error);
+        return res.status(500).json(sanitizeError(error));
+    }
 })
 
 // Function to generate a unique order ID
@@ -1118,13 +1173,12 @@ app.put('/updateBookingDetails/:id', requireAuth, hasRole(['admin']), async (req
 //get all booking details
 app.get('/allBookingRequest', requireAuth, hasRole(['admin']), async (req, res) => {
     try {
-        const data = await Booking.find();
-        res.json(data);
+        const data = await Booking.find({}).lean();
         console.log("All Booking Requests Fetched");
-
+        return res.json(data.map(toPublicBooking));
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Server error' });
+        console.error("Error fetching bookings:", error);
+        return res.status(500).json(sanitizeError(error));
     }
 }
 );
@@ -1167,13 +1221,12 @@ app.post('/addservice', requireAuth, hasRole(['admin']), upload.single('image'),
 // 3. Create API endpoint to retrieve data
 app.get('/allServices', requireAuth, async (req, res) => {
     try {
-        const data = await Service.find();
-        res.json(data);
+        const data = await Service.find({}).lean();
         console.log("All Services Fetched");
-
+        return res.json(data.map(toPublicService));
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Server error' });
+        console.error("Error fetching services:", error);
+        return res.status(500).json(sanitizeError(error));
     }
 });
 
@@ -1256,24 +1309,24 @@ app.post('/issues', requireAuth, async (request, response) => {
         const allowed = pick(value, ['cid', 'Cname', 'Cnic', 'Ccontact', 'Clocation', 'Cstatus']);
 
         const issue = await Issue.create(allowed);
-        return response.status(201).send(issue);
+        return response.status(201).json(toPublicIssue(issue.toObject ? issue.toObject() : issue));
     } catch (error) {
-        console.log(error.message);
-        response.status(500).send({ message: error.message })
+        console.error("Error creating issue:", error);
+        return response.status(500).json(sanitizeError(error));
     }
 });
 
 //Route for get all books from database
 app.get('/issues', requireAuth, async (request, response) => {
     try {
-        const issues = await Issue.find({});
+        const issues = await Issue.find({}).lean();
         return response.status(200).json({
             count: issues.length,
-            data: issues
+            data: issues.map(toPublicIssue)
         });
     } catch (error) {
-        console.log(error.message);
-        response.status(500).send({ message: error.message });
+        console.error("Error fetching issues:", error);
+        return response.status(500).json(sanitizeError(error));
     }
 });
 
@@ -1282,14 +1335,14 @@ app.get('/issues/:id', requireAuth, async (request, response) => {
     try {
         const { id } = request.params;
 
-        const issue = await Issue.findById(id);
+        const issue = await Issue.findById(id).lean();
         if (!issue) {
-            return response.status(404).json({ message: 'Issue not found' });
+            return response.status(404).json({ error: 'Not found' });
         }
-        return response.status(200).json(issue);
+        return response.status(200).json(toPublicIssue(issue));
     } catch (error) {
-        console.log(error.message);
-        response.status(500).send({ message: error.message });
+        console.error("Error fetching issue:", error);
+        return response.status(500).json(sanitizeError(error));
     }
 });
 
@@ -1308,17 +1361,17 @@ app.put('/issues/:id', requireAuth, async (request, response) => {
 
         // Block mass assignment - only allow specific fields
         const allowed = pick(value, ['cid', 'Cname', 'Cnic', 'Ccontact', 'Clocation', 'Cstatus']);
-        const result = await Issue.findByIdAndUpdate(id, allowed, { new: true, runValidators: true });
+        const result = await Issue.findByIdAndUpdate(id, allowed, { new: true, runValidators: true }).lean();
 
         if (!result) {
-            return response.status(404).json({ message: 'Issue not found' });
+            return response.status(404).json({ error: 'Not found' });
         }
 
-        return response.status(200).json({ message: 'Issue update Successfully', issue: result });
+        return response.status(200).json({ message: 'Issue update Successfully', issue: toPublicIssue(result) });
 
     } catch (error) {
-        console.log(error.message);
-        response.status(500).send({ message: error.message });
+        console.error("Error updating issue:", error);
+        return response.status(500).json(sanitizeError(error));
     }
 });
 
@@ -1333,11 +1386,11 @@ app.delete('/issues/:id', requireAuth, hasRole(['admin']), async (request, respo
             return response.status(404).json({ message: 'Issue not found' });
         }
 
-        return response.status(200).send({ message: 'Issue delete Successfully' });
+        return response.status(200).json({ message: 'Issue delete Successfully' });
 
     } catch (error) {
-        console.log(error.message);
-        response.status(500).send({ message: error.message });
+        console.error("Error deleting issue:", error);
+        return response.status(500).json(sanitizeError(error));
     }
 });
 
@@ -1345,7 +1398,7 @@ app.delete('/issues/:id', requireAuth, hasRole(['admin']), async (request, respo
 
 const Customers = require("./models/customerModel");
 
-app.post("/customers/", requireAuth, hasRole(['admin']), (req, res) => {
+app.post("/customers/", requireAuth, hasRole(['admin']), async (req, res) => {
     try {
         // Validate input
         const { error, value } = customerSchema.validate(req.body, { allowUnknown: false });
@@ -1356,38 +1409,38 @@ app.post("/customers/", requireAuth, hasRole(['admin']), (req, res) => {
         // Block mass assignment - only allow specific fields
         const allowed = pick(value, ['customerID', 'name', 'NIC', 'address', 'contactno', 'email', 'vType', 'vName', 'Regno', 'vColor', 'vFuel']);
 
-        Customers.create(allowed)
-            .then(() => res.json({ msg: "Customer added successfully" }))
-            .catch((err) => {
-                console.error("Error creating customer:", err);
-                res.status(400).json({ msg: "Customer adding failed" });
-            });
+        const newCustomer = await Customers.create(allowed);
+        return res.json({ msg: "Customer added successfully", customer: toPublicCustomer(newCustomer.toObject ? newCustomer.toObject() : newCustomer) });
     } catch (error) {
-        console.error("Error validating customer data:", error);
-        res.status(500).json({ msg: "Internal server error" });
+        console.error("Error creating customer:", error);
+        return res.status(500).json(sanitizeError(error));
     }
 });
 
-app.get("/customers/", requireAuth, hasRole(['admin']), (req, res) => {
-
-    Customers.find()
-        .then((customers) => res.json(customers))
-        .catch(() => res.status(400).json({ msg: "No customers" }));
+app.get("/customers/", requireAuth, hasRole(['admin']), async (req, res) => {
+    try {
+        const customers = await Customers.find({}).lean();
+        return res.json(customers.map(toPublicCustomer));
+    } catch (error) {
+        console.error("Error fetching customers:", error);
+        return res.status(500).json(sanitizeError(error));
+    }
 });
 
 app.get("/customers/:id", requireAuth, async (req, res) => {
     try {
-        const customer = await Customers.findById(req.params.id);
+        const customer = await Customers.findById(req.params.id).lean();
         if (!customer) {
-            return res.status(404).json({ msg: "Customer not found" });
+            return res.status(404).json({ error: 'Not found' });
         }
-        res.json(customer);
+        return res.json(toPublicCustomer(customer));
     } catch (error) {
-        res.status(500).json({ msg: "Internal server error" });
+        console.error("Error fetching customer:", error);
+        return res.status(500).json(sanitizeError(error));
     }
 });
 
-app.put("/customers/:id", requireAuth, hasRole(['admin']), (req, res) => {
+app.put("/customers/:id", requireAuth, hasRole(['admin']), async (req, res) => {
     try {
         // Validate input
         const { error, value } = customerSchema.validate(req.body, { allowUnknown: false });
@@ -1398,39 +1451,57 @@ app.put("/customers/:id", requireAuth, hasRole(['admin']), (req, res) => {
         // Block mass assignment - only allow specific fields
         const allowed = pick(value, ['customerID', 'name', 'NIC', 'address', 'contactno', 'email', 'vType', 'vName', 'Regno', 'vColor', 'vFuel']);
 
-        Customers.findByIdAndUpdate(req.params.id, allowed, { runValidators: true, new: true })
-            .then((updatedCustomer) => {
-                if (!updatedCustomer) {
-                    return res.status(404).json({ msg: "Customer not found" });
-                }
-                res.json({ msg: "Update successfully", customer: updatedCustomer });
-            })
-            .catch((err) => {
-                console.error("Error updating customer:", err);
-                res.status(400).json({ msg: "Update fail" });
-            });
+        const updatedCustomer = await Customers.findByIdAndUpdate(req.params.id, allowed, { runValidators: true, new: true }).lean();
+        if (!updatedCustomer) {
+            return res.status(404).json({ error: 'Not found' });
+        }
+        return res.json({ msg: "Update successfully", customer: toPublicCustomer(updatedCustomer) });
     } catch (error) {
-        console.error("Error validating customer data:", error);
-        res.status(500).json({ msg: "Internal server error" });
+        console.error("Error updating customer:", error);
+        return res.status(500).json(sanitizeError(error));
     }
 });
 
-app.delete("/customers/:id", requireAuth, hasRole(['admin']), (req, res) => {
-    Customers.findByIdAndDelete(req.params.id).then(() =>
-        res
-            .json({ msg: "Delete successfully" }))
-        .catch(() => res.status(400).json({ msg: "Delete fail" }));
+app.delete("/customers/:id", requireAuth, hasRole(['admin']), async (req, res) => {
+    try {
+        const result = await Customers.findByIdAndDelete(req.params.id);
+        if (!result) {
+            return res.status(404).json({ error: 'Not found' });
+        }
+        return res.json({ msg: "Delete successfully" });
+    } catch (error) {
+        console.error("Error deleting customer:", error);
+        return res.status(500).json(sanitizeError(error));
+    }
 });
 
 app.get('/allusers', adminLimiter, requireAuth, hasRole(['admin']), async (req, res) => { // rate-limit: added
-    let users = await Admins.find({})
-    console.log("All Users Fetched");
-    res.send(users);
+    try {
+        const users = await Admins.find({}).lean();
+        console.log("All Users Fetched");
+        return res.json(users.map(toPublicAdmin));
+    } catch (error) {
+        console.error("Error fetching users:", error);
+        return res.status(500).json(sanitizeError(error));
+    }
 })
 
-app.delete("/users/:id", adminLimiter, requireAuth, hasRole(['admin']), (req, res) => { // rate-limit: added
-    Admins.findByIdAndDelete(req.params.id).then(() =>
-        res
-            .json({ msg: "Delete successfully" }))
-        .catch(() => res.status(400).json({ msg: "Delete fail" }));
+app.delete("/users/:id", adminLimiter, requireAuth, hasRole(['admin']), async (req, res) => { // rate-limit: added
+    try {
+        const result = await Admins.findByIdAndDelete(req.params.id);
+        if (!result) {
+            return res.status(404).json({ error: 'Not found' });
+        }
+        return res.json({ msg: "Delete successfully" });
+    } catch (error) {
+        console.error("Error deleting user:", error);
+        return res.status(500).json(sanitizeError(error));
+    }
 });
+
+// ====== Centralized error handler (last middleware) ======
+app.use((err, req, res, next) => {
+  const safe = sanitizeError(err);
+  res.status(500).json(safe);
+});
+// ====== END error handler ======
