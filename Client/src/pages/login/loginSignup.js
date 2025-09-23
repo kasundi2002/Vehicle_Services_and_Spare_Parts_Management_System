@@ -118,7 +118,7 @@ useEffect(() => {
 
   // New: Google/OIDC login via backend BFF
   const continueWithGoogle = () => {
-    window.location.href = `${API_BASE}/auth/login`;
+    window.location.href = `${API_BASE}/google`;
   };
 
   if (checkingSession) {

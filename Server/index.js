@@ -14,6 +14,7 @@ const cookieParser = require("cookie-parser");
 const session = require("express-session");
 const Joi = require("joi");
 const nodemailer = require("nodemailer");
+const passport = require("passport");
 
 // Google OpenID Connect & OAuth2
 const { Issuer, generators } = require("openid-client");
@@ -64,16 +65,30 @@ app.use(helmet({
 }));
 
 // --------- CORS (cookies need credentials + exact origin) ---------
-const allowList = ALLOWED_ORIGINS.split(",").map(s => s.trim()).filter(Boolean);
+const allowList = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://localhost:4000',
+  'https://vehicle-sever.onrender.com',
+  'https://vehicle-client.onrender.com' 
+  // Add your frontend deployment URL if different
+];
+
 app.use(cors({
-  origin(origin, cb) {
-    if (!origin) return cb(null, true);                 // same-origin / curl
-    if (allowList.includes(origin)) return cb(null, true);
-    return cb(new Error("CORS blocked: origin not allowed"), false);
+  origin: function(origin, callback) {
+    // allow requests with no origin (like mobile apps, curl)
+    if (!origin) return callback(null, true);
+    
+    if (allowList.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.log('Blocked origin:', origin);
+      callback(new Error('CORS not allowed'));
+    }
   },
   credentials: true,
-  methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
-  allowedHeaders: ["Content-Type","Authorization","X-Requested-With","auth-token"]
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'auth-token', 'Origin', 'Accept']
 }));
 
 app.use(cookieParser());
@@ -93,6 +108,13 @@ app.use(session({
     maxAge: 1000 * 60 * 60 * 8
   }
 }));
+
+// Initialize Passport and restore authentication state from session
+app.use(passport.initialize());
+app.use(passport.session());
+
+// Configure Passport strategies
+require('./config/passport');
 
 // Optional HSTS for HTTPS
 if (isProd) {
@@ -272,142 +294,168 @@ const transporter = nodemailer.createTransport({
   auth: { user: EMAIL_ADD, pass: EMAIL_PW }
 });
 
+app.get('/google',
+  passport.authenticate('google', { scope: ['profile', 'email'] })
+);
+
+app.get('/google/callback',
+  passport.authenticate('google', { failureRedirect: '/login' }),
+  (req, res) => {
+    try {
+      const user = req.user;
+      
+      if (!user) {
+        return res.status(401).json({ message: "Authentication failed" });
+      }
+
+      // Generate tokens for the authenticated user
+      const token = jwt.sign({ user: { id: user.id, email: user.email, name: user.name, role: "user" } }, JWT_SECRET, { expiresIn: "8h" });
+       
+      // Redirect to frontend callback page (no tokens in URL)
+      res.redirect(`http://localhost:3000/auth/callback?token=${token}`);
+    } catch (error) {
+      console.error("Google OAuth callback error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  }
+);
+
 // --------- GOOGLE OPENID CONNECT (sessions, PKCE) ---------
-let oidcClient;
-async function getOidcClient() {
-  if (oidcClient) return oidcClient;
-  const issuer = await Issuer.discover(OIDC_ISSUER);
-   console.log("Discovered issuer:", issuer.issuer);
-  oidcClient = new issuer.Client({
-    client_id: OIDC_CLIENT_ID,
-    client_secret: OIDC_CLIENT_SECRET,
-    redirect_uris: [OIDC_REDIRECT_URI],
-    response_types: ["code"],
-    token_endpoint_auth_method: "client_secret_basic",
-  });
-  return oidcClient;
-}
+// let oidcClient;
+// async function getOidcClient() {
+//   if (oidcClient) return oidcClient;
+//   const issuer = await Issuer.discover(OIDC_ISSUER);
+//    console.log("Discovered issuer:", issuer.issuer);
+//   oidcClient = new issuer.Client({
+//     client_id: OIDC_CLIENT_ID,
+//     client_secret: OIDC_CLIENT_SECRET,
+//     redirect_uris: [OIDC_REDIRECT_URI],
+//     response_types: ["code"],
+//     token_endpoint_auth_method: "client_secret_basic",
+//   });
+//   return oidcClient;
+// }
 
-app.get("/auth/login", async (req, res, next) => {
-  try {
-    const c = await getOidcClient();
-    const state = generators.state();
-    const code_verifier = generators.codeVerifier();
-    const code_challenge = generators.codeChallenge(code_verifier);
+// app.get("/auth/login", async (req, res, next) => {
+//   try {
+//     const c = await getOidcClient();
+//     const state = generators.state();
+//     const code_verifier = generators.codeVerifier();
+//     const code_challenge = generators.codeChallenge(code_verifier);
 
-    req.session.oidc = { state, code_verifier };
-    req.session.save(err => {
-      if (err) return next(err);
-      const url = c.authorizationUrl({
-        scope: "openid profile email",
-        response_type: "code",
-        code_challenge,
-        code_challenge_method: "S256",
-        state,
-      });
-      res.redirect(url);
-    });
-  } catch (e) { next(e); }
-});
+//     req.session.oidc = { state, code_verifier };
+//     req.session.save(err => {
+//       if (err) return next(err);
+//       const url = c.authorizationUrl({
+//         scope: "openid profile email",
+//         response_type: "code",
+//         code_challenge,
+//         code_challenge_method: "S256",
+//         state,
+//       });
+//       res.redirect(url);
+//     });
+//   } catch (e) { next(e); }
+// });
 
-app.get("/auth/callback", async (req, res, next) => {
-  try {
-    const c = await getOidcClient();
-    const params = c.callbackParams(req);
-    const { state, code_verifier } = req.session.oidc || {};
-    if (!state || !code_verifier) return res.status(400).send("Missing PKCE session");
+// app.get("/auth/callback", async (req, res, next) => {
+//   try {
+//     const c = await getOidcClient();
+//     const params = c.callbackParams(req);
+//     const { state, code_verifier } = req.session.oidc || {};
+//     if (!state || !code_verifier) return res.status(400).send("Missing PKCE session");
 
-    const tokenSet = await c.callback(OIDC_REDIRECT_URI, params, { state, code_verifier });
-    const claims = tokenSet.claims();
+//     const tokenSet = await c.callback(OIDC_REDIRECT_URI, params, { state, code_verifier });
+//     const claims = tokenSet.claims();
 
-    req.session.user = {
-      sub: claims.sub,
-      name: claims.name || claims.preferred_username || claims.email,
-      email: claims.email,
-      picture: claims.picture,
-    };
-    req.session.tokens = {
-      access_token: tokenSet.access_token,
-      refresh_token: tokenSet.refresh_token,
-      expires_at: tokenSet.expires_at,
-    };
-    delete req.session.oidc;
+//     req.session.user = {
+//       sub: claims.sub,
+//       name: claims.name || claims.preferred_username || claims.email,
+//       email: claims.email,
+//       picture: claims.picture,
+//     };
+//     req.session.tokens = {
+//       access_token: tokenSet.access_token,
+//       refresh_token: tokenSet.refresh_token,
+//       expires_at: tokenSet.expires_at,
+//     };
+//     delete req.session.oidc;
 
-    res.redirect(`${FRONTEND_ORIGIN}/login?status=success`);
-  } catch (e) { next(e); }
-});
+//     res.redirect(`${FRONTEND_ORIGIN}/login?status=success`);
+//   } catch (e) { next(e); }
+// });
 
-app.get("/auth/me", (req, res) => {
-  if (!req.session.user) return res.status(401).json({ error: "unauthenticated" });
-  res.json({ user: req.session.user });
-});
+// app.get("/auth/me", (req, res) => {
+//   if (!req.session.user) return res.status(401).json({ error: "unauthenticated" });
+//   res.json({ user: req.session.user });
+// });
 
-app.post("/auth/logout", (req, res) => {
-  req.session.destroy(() => {
-    res.clearCookie("sid");
-    res.json({ ok: true });
-  });
-});
+// app.post("/auth/logout", (req, res) => {
+//   req.session.destroy(() => {
+//     res.clearCookie("sid");
+//     res.json({ ok: true });
+//   });
+// });
 
 // Helper to protect with session
-function ensureSessionAuth(req, res, next) {
-  if (req.session && req.session.user) return next();
-  return res.status(401).json({ error: "unauthenticated" });
-}
+// function ensureSessionAuth(req, res, next) {
+//   if (req.session && req.session.user) return next();
+//   return res.status(401).json({ error: "unauthenticated" });
+// }
 
-// Alias: session-protected sample
-app.get("/api/me", ensureSessionAuth, (req, res) => {
-  res.json({ user: req.session.user });
-});
+// // Alias: session-protected sample
+// app.get("/api/me", ensureSessionAuth, (req, res) => {
+//   res.json({ user: req.session.user });
+// });
 
 // --------- GOOGLE OAUTH2 (no OIDC) ---------
-const oauthClient = new OAuth2Client(OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_REDIRECT_URI);
-const oauthScopes = [
-  "openid",
-  "profile",
-  "email",
-  "https://www.googleapis.com/auth/userinfo.email",
-  "https://www.googleapis.com/auth/userinfo.profile",
-];
+// const oauthClient = new OAuth2Client(OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_REDIRECT_URI);
+// const oauthScopes = [
+//   "openid",
+//   "profile",
+//   "email",
+//   "https://www.googleapis.com/auth/userinfo.email",
+//   "https://www.googleapis.com/auth/userinfo.profile",
+// ];
 
-app.get("/oauth/login", (req, res) => {
-  const url = oauthClient.generateAuthUrl({ access_type: "offline", scope: oauthScopes, prompt: "consent" });
-  res.redirect(url);
-});
+// app.get("/oauth/login", (req, res) => {
+//   const url = oauthClient.generateAuthUrl({ access_type: "offline", scope: oauthScopes, prompt: "consent" });
+//   res.redirect(url);
+// });
 
-app.get("/oauth/callback", async (req, res, next) => {
-  try {
-    const { code } = req.query;
-    const { tokens } = await oauthClient.getToken(code);
-    // use Google's OpenID userinfo endpoint
-    const r = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
-      headers: { Authorization: `Bearer ${tokens.access_token}` },
-    });
-    const profile = await r.json();
+// app.get("/oauth/callback", async (req, res, next) => {
+//   try {
+//     const { code } = req.query;
+//     const { tokens } = await oauthClient.getToken(code);
+//     // use Google's OpenID userinfo endpoint
+//     const r = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
+//       headers: { Authorization: `Bearer ${tokens.access_token}` },
+//     });
+//     const profile = await r.json();
 
-    req.session.user = {
-      sub: profile.sub,
-      name: profile.name || profile.email,
-      email: profile.email,
-      picture: profile.picture,
-    };
-    req.session.tokens = tokens;
+//     req.session.user = {
+//       sub: profile.sub,
+//       name: profile.name || profile.email,
+//       email: profile.email,
+//       picture: profile.picture,
+//     };
+//     req.session.tokens = tokens;
 
-    res.redirect(`${FRONTEND_ORIGIN}/login?status=success`);
-  } catch (e) { next(e); }
-});
+//     res.redirect(`${FRONTEND_ORIGIN}/login?status=success`);
+//   } catch (e) { next(e); }
+// });
 
-app.get("/oauth/me", (req, res) => {
-  if (!req.session.user) return res.status(401).json({ error: "unauthenticated" });
-  res.json({ user: req.session.user });
-});
+// app.get("/oauth/me", (req, res) => {
+//   if (!req.session.user) return res.status(401).json({ error: "unauthenticated" });
+//   res.json({ user: req.session.user });
+// });
 
-app.post("/oauth/logout", (req, res) => {
-  req.session.destroy(() => {
-    res.clearCookie("sid");
-    res.json({ ok: true });
-  });
-});
+// app.post("/oauth/logout", (req, res) => {
+//   req.session.destroy(() => {
+//     res.clearCookie("sid");
+//     res.json({ ok: true });
+//   });
+// });
 
 // --------- BUSINESS ROUTES (JWT protected as in your app) ---------
 

@@ -24,6 +24,8 @@
     "nodemailer": "^6.10.1",
     "nodemon": "^3.0.3",
     "openid-client": "^4.9.1",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0",
     "qrcode": "^1.5.3",
     "socket.io-client": "^4.7.5",
     "socket.io-server": "^1.0.0-b"

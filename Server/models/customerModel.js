@@ -3,10 +3,14 @@ const mongoose = require('mongoose');
 const CustomerSchema = new mongoose.Schema({
     customerID:{
         type:String,
-        require:true,
     },
     name:{
         type:String,
+    },
+    googleId:{
+        type:String,
+        unique:true,
+        sparse:true,
     },
     NIC:{
         type:String,

@@ -19,6 +19,7 @@ import Footer from "./Components/Footer/Footer";
 import CreateIssue from "./Components/Issues/CreateIssues";
 import Checkout from "./Components/OnlineShop/Checkout/Checkout";
 import AuthStatus from "./Components/AuthStatus";
+import AuthCallback from "./pages/login/AuthCallback";
 import "./App.css";
 
 function App() {
@@ -31,6 +32,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Home />} />
            <Route path="/me-test" element={<AuthStatus />} /> 
+           <Route path="/auth/callback" element={<AuthCallback />} /> 
           <Route path="/login" element={<LoginSignup />} />
           <Route path="/loginSignup" element={<LoginSignup />} />
           <Route path="/booking" element={<BookingForm />} />
