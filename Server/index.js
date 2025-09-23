@@ -8,6 +8,7 @@ const cors = require("cors");
 const helmet = require("helmet");
 const { log } = require("console");
 const Joi = require("joi");
+const rateLimit = require("express-rate-limit");
 
 // Trust reverse proxy (Render/Heroku/NGINX) so req.secure & x-forwarded-proto work
 app.set('trust proxy', 1);
@@ -17,10 +18,10 @@ app.disable('x-powered-by');
 
 // Helmet baseline (no CSP here — handled by another member)
 app.use(helmet({
-  frameguard: { action: 'deny' },   // X-Frame-Options: DENY
-  hidePoweredBy: true,              // X-Powered-By removed
-  noSniff: true,                    // X-Content-Type-Options: nosniff
-  referrerPolicy: { policy: 'no-referrer' } // optional but safe default
+    frameguard: { action: 'deny' },   // X-Frame-Options: DENY
+    hidePoweredBy: true,              // X-Powered-By removed
+    noSniff: true,                    // X-Content-Type-Options: nosniff
+    referrerPolicy: { policy: 'no-referrer' } // optional but safe default
 }));
 const Product = require("./models/OnlineShopModels/Product");
 const Users = require("./models/OnlineShopModels/Users");
@@ -30,98 +31,98 @@ var nodemailer = require('nodemailer');
 
 // Validation Schemas
 const userSchema = Joi.object({
-  name: Joi.string().min(2).max(50).trim().required(),
-  email: Joi.string().email().lowercase().trim().required(),
-  password: Joi.string().min(8).max(128).required()
+    name: Joi.string().min(2).max(50).trim().required(),
+    email: Joi.string().email().lowercase().trim().required(),
+    password: Joi.string().min(8).max(128).required()
 });
 
 const loginSchema = Joi.object({
-  email: Joi.string().email().lowercase().trim().required(),
-  password: Joi.string().required()
+    email: Joi.string().email().lowercase().trim().required(),
+    password: Joi.string().required()
 });
 
 const productSchema = Joi.object({
-  name: Joi.string().min(2).max(100).trim().required(),
-  category: Joi.string().min(2).max(50).trim().required(),
-  brand: Joi.string().min(2).max(50).trim().required(),
-  image: Joi.string().uri().required(),
-  new_price: Joi.number().positive().required(),
-  old_price: Joi.number().positive().required(),
-  description: Joi.string().max(500).trim().required(),
-  quantity: Joi.number().integer().min(0).required()
+    name: Joi.string().min(2).max(100).trim().required(),
+    category: Joi.string().min(2).max(50).trim().required(),
+    brand: Joi.string().min(2).max(50).trim().required(),
+    image: Joi.string().uri().required(),
+    new_price: Joi.number().positive().required(),
+    old_price: Joi.number().positive().required(),
+    description: Joi.string().max(500).trim().required(),
+    quantity: Joi.number().integer().min(0).required()
 });
 
 const orderSchema = Joi.object({
-  fullName: Joi.string().min(2).max(100).trim().required(),
-  email: Joi.string().email().lowercase().trim().required(),
-  address: Joi.string().min(10).max(200).trim().required(),
-  contact: Joi.string().pattern(/^[0-9+\-\s()]+$/).min(10).max(15).required(),
-  paymentMethod: Joi.string().valid('cash', 'card', 'online').required(),
-  items: Joi.array().items(Joi.object()).min(1).required(),
-  totalAmount: Joi.number().positive().required()
+    fullName: Joi.string().min(2).max(100).trim().required(),
+    email: Joi.string().email().lowercase().trim().required(),
+    address: Joi.string().min(10).max(200).trim().required(),
+    contact: Joi.string().pattern(/^[0-9+\-\s()]+$/).min(10).max(15).required(),
+    paymentMethod: Joi.string().valid('cash', 'card', 'online').required(),
+    items: Joi.array().items(Joi.object()).min(1).required(),
+    totalAmount: Joi.number().positive().required()
 });
 
 const bookingSchema = Joi.object({
-  ownerName: Joi.string().min(2).max(100).trim().required(),
-  email: Joi.string().email().lowercase().trim().required(),
-  phone: Joi.string().pattern(/^[0-9+\-\s()]+$/).min(10).max(15).required(),
-  specialNotes: Joi.string().max(500).trim().allow(''),
-  location: Joi.string().min(5).max(100).trim().required(),
-  serviceType: Joi.string().min(2).max(50).trim().required(),
-  vehicleModel: Joi.string().min(2).max(50).trim().required(),
-  vehicleNumber: Joi.string().min(2).max(20).trim().required(),
-  date: Joi.date().min('now').required(),
-  time: Joi.string().pattern(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/).required()
+    ownerName: Joi.string().min(2).max(100).trim().required(),
+    email: Joi.string().email().lowercase().trim().required(),
+    phone: Joi.string().pattern(/^[0-9+\-\s()]+$/).min(10).max(15).required(),
+    specialNotes: Joi.string().max(500).trim().allow(''),
+    location: Joi.string().min(5).max(100).trim().required(),
+    serviceType: Joi.string().min(2).max(50).trim().required(),
+    vehicleModel: Joi.string().min(2).max(50).trim().required(),
+    vehicleNumber: Joi.string().min(2).max(20).trim().required(),
+    date: Joi.date().min('now').required(),
+    time: Joi.string().pattern(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/).required()
 });
 
 const serviceSchema = Joi.object({
-  serviceTitle: Joi.string().min(2).max(100).trim().required(),
-  details: Joi.string().max(500).trim().allow(''),
-  estimatedHour: Joi.string().min(1).max(20).trim().required(),
-  image: Joi.string().uri().required()
+    serviceTitle: Joi.string().min(2).max(100).trim().required(),
+    details: Joi.string().max(500).trim().allow(''),
+    estimatedHour: Joi.string().min(1).max(20).trim().required(),
+    image: Joi.string().uri().required()
 });
 
 const customerSchema = Joi.object({
-  customerID: Joi.string().min(2).max(20).trim().required(),
-  name: Joi.string().min(2).max(100).trim().required(),
-  NIC: Joi.string().pattern(/^[0-9]{9}[vVxX]|[0-9]{12}$/).required(),
-  address: Joi.string().min(10).max(200).trim().required(),
-  contactno: Joi.string().pattern(/^[0-9+\-\s()]+$/).min(10).max(15).required(),
-  email: Joi.string().email().lowercase().trim().required(),
-  vType: Joi.string().min(2).max(20).trim().required(),
-  vName: Joi.string().min(2).max(50).trim().required(),
-  Regno: Joi.string().min(2).max(20).trim().required(),
-  vColor: Joi.string().min(2).max(20).trim().required(),
-  vFuel: Joi.string().min(2).max(20).trim().required()
+    customerID: Joi.string().min(2).max(20).trim().required(),
+    name: Joi.string().min(2).max(100).trim().required(),
+    NIC: Joi.string().pattern(/^[0-9]{9}[vVxX]|[0-9]{12}$/).required(),
+    address: Joi.string().min(10).max(200).trim().required(),
+    contactno: Joi.string().pattern(/^[0-9+\-\s()]+$/).min(10).max(15).required(),
+    email: Joi.string().email().lowercase().trim().required(),
+    vType: Joi.string().min(2).max(20).trim().required(),
+    vName: Joi.string().min(2).max(50).trim().required(),
+    Regno: Joi.string().min(2).max(20).trim().required(),
+    vColor: Joi.string().min(2).max(20).trim().required(),
+    vFuel: Joi.string().min(2).max(20).trim().required()
 });
 
 const issueSchema = Joi.object({
-  cid: Joi.string().min(2).max(20).trim().required(),
-  Cname: Joi.string().min(2).max(100).trim().required(),
-  Cnic: Joi.string().pattern(/^[0-9]{9}[vVxX]|[0-9]{12}$/).required(),
-  Ccontact: Joi.string().pattern(/^[0-9+\-\s()]+$/).min(10).max(15).required(),
-  Clocation: Joi.string().min(5).max(100).trim().required(),
-  Cstatus: Joi.string().valid('pending', 'in_progress', 'resolved', 'closed').required()
+    cid: Joi.string().min(2).max(20).trim().required(),
+    Cname: Joi.string().min(2).max(100).trim().required(),
+    Cnic: Joi.string().pattern(/^[0-9]{9}[vVxX]|[0-9]{12}$/).required(),
+    Ccontact: Joi.string().pattern(/^[0-9+\-\s()]+$/).min(10).max(15).required(),
+    Clocation: Joi.string().min(5).max(100).trim().required(),
+    Cstatus: Joi.string().valid('pending', 'in_progress', 'resolved', 'closed').required()
 });
 
 // Strict CORS with allow-list
 const allowed = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:3000,https://vehicle-sever.onrender.com')
-  .split(',')
-  .map(s => s.trim())
-  .filter(Boolean);
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
 
 const corsOptions = {
-  origin(origin, cb) {
-    // allow same-origin / non-browser clients without Origin
-    if (!origin) return cb(null, true);
-    if (allowed.includes(origin)) return cb(null, true);
-    return cb(new Error('CORS blocked: origin not allowed'), false);
-  },
-  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization','X-Requested-With','auth-token'],
-  // Only enable credentials if the app actually uses cookies across origins.
-  // credentials: true,
-  optionsSuccessStatus: 204
+    origin(origin, cb) {
+        // allow same-origin / non-browser clients without Origin
+        if (!origin) return cb(null, true);
+        if (allowed.includes(origin)) return cb(null, true);
+        return cb(new Error('CORS blocked: origin not allowed'), false);
+    },
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'auth-token'],
+    // Only enable credentials if the app actually uses cookies across origins.
+    // credentials: true,
+    optionsSuccessStatus: 204
 };
 
 app.use(express.json());
@@ -131,24 +132,24 @@ app.use(cors(corsOptions));
 const isProd = process.env.NODE_ENV === 'production';
 
 if (isProd) {
-  app.use((req, res, next) => {
-    const https = req.secure || req.headers['x-forwarded-proto'] === 'https';
-    if (https) {
-      res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-    }
-    next();
-  });
+    app.use((req, res, next) => {
+        const https = req.secure || req.headers['x-forwarded-proto'] === 'https';
+        if (https) {
+            res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+        }
+        next();
+    });
 }
 
 // MongoDB Connection - Mongo uri exposure vulnerability fixed by Kasundi
 const mongoURI = process.env.MONGO_URI || "mongodb://localhost:27017/vehicle_services";
 mongoose.connect(mongoURI)
-.then(() => console.log("MongoDB Connected"))
-.catch((err) => console.error("MongoDB Connection Error:", err));
+    .then(() => console.log("MongoDB Connected"))
+    .catch((err) => console.error("MongoDB Connection Error:", err));
 
 //API Creation
 
-app.get("/",(req, res) =>{
+app.get("/", (req, res) => {
     res.send("Express App is running")
 })
 
@@ -156,44 +157,44 @@ app.get("/",(req, res) =>{
 
 const storage = multer.diskStorage({
     destination: './upload/images',
-    filename:(req,file,cb)=>{
+    filename: (req, file, cb) => {
         return cb(null, `${file.fieldname}_${Date.now()}${path.extname(file.originalname)}`)
     }
 })
 
 const upload = multer({
     storage: storage,
-    limits: { 
+    limits: {
         fileSize: 2 * 1024 * 1024 // 2MB limit
     },
     fileFilter: (req, file, cb) => {
         const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png'];
         const allowedExts = ['.jpg', '.jpeg', '.png'];
-        
+
         if (!allowedMimes.includes(file.mimetype)) {
             return cb(new Error('Invalid file type. Only JPEG and PNG images are allowed.'), false);
         }
-        
+
         const ext = path.extname(file.originalname).toLowerCase();
         if (!allowedExts.includes(ext)) {
             return cb(new Error('Invalid file extension. Only .jpg, .jpeg, and .png files are allowed.'), false);
         }
-        
+
         cb(null, true);
     }
 })
 
 //Creating upload endpoint for images
-app.use('/images',express.static('upload/images'))
+app.use('/images', express.static('upload/images'))
 
-app.post("/upload",upload.single('product'),(req,res)=>{
+app.post("/upload", upload.single('product'), (req, res) => {
     res.json({
-        success:1,
-        image_url:`http://localhost:${port}/images/${req.file.filename}`
+        success: 1,
+        image_url: `http://localhost:${port}/images/${req.file.filename}`
     })
 })
 
-app.post('/addproduct', async (req,res)=>{
+app.post('/addproduct', async (req, res) => {
     try {
         // Validate input
         const { error, value } = productSchema.validate(req.body, { allowUnknown: false });
@@ -204,7 +205,7 @@ app.post('/addproduct', async (req,res)=>{
         const products = await Product.find({});
         let id = 1;
 
-        if(products.length > 0) {
+        if (products.length > 0) {
             const lastProduct = products[products.length - 1];
             id = lastProduct.id + 1;
         }
@@ -237,22 +238,22 @@ app.post('/addproduct', async (req,res)=>{
 
 // Creating API for deleting Product
 
-app.post('/removeproduct',async (req,res)=>{
+app.post('/removeproduct', async (req, res) => {
     try {
         // Validate input
         const { error, value } = Joi.object({
             id: Joi.number().integer().positive().required(),
             name: Joi.string().min(1).max(100).trim().required()
         }).validate(req.body, { allowUnknown: false });
-        
+
         if (error) {
             return res.status(400).json({ success: false, error: error.details[0].message });
         }
 
-        await Product.findOneAndDelete({id: value.id});
+        await Product.findOneAndDelete({ id: value.id });
         console.log("Removed");
         res.json({
-            success:true,
+            success: true,
             name: value.name,
         });
     } catch (error) {
@@ -271,10 +272,10 @@ app.get('/allproducts', requireAuth, async (req, res)=>{
 
 const port = process.env.PORT || 5000;
 
-app.listen(port,(error)=>{
-    if(!error){
+app.listen(port, (error) => {
+    if (!error) {
         console.log("Server Running on Port " + port)
-    }else{
+    } else {
         console.log("Error : " + error)
     }
 })
@@ -295,8 +296,8 @@ app.put('/updateproduct/:id', async (req, res) => {
         }
 
         const product = await Product.findOneAndUpdate(
-            { id: productId }, 
-            value, 
+            { id: productId },
+            value,
             { new: true, runValidators: true }
         );
 
@@ -316,7 +317,7 @@ app.put('/updateproduct/:id', async (req, res) => {
 app.get('/product/:id', async (req, res) => {
     try {
         const productId = req.params.id;
-        
+
         // Find the product by ID
         const product = await Product.findOne({ id: productId });
 
@@ -334,7 +335,7 @@ app.get('/product/:id', async (req, res) => {
 app.get('/lowStockProducts', requireAuth, hasRole(['admin']), async (req, res) => {
     try {
         let products = await Product.find({});
-        
+
         // Filter products with quantity less than 2
         const lowStockProducts = products.filter(product => product.quantity < 3);
 
@@ -367,24 +368,24 @@ app.get('/processingOrdersCount', requireAuth, hasRole(['admin']), async (req, r
     }
 });
 
-app.post('/signup',async (req,res) =>{
+app.post('/signup', async (req, res) => {
     try {
         // Validate input
         const { error, value } = userSchema.validate(req.body, { allowUnknown: false });
         if (error) {
-            return res.status(400).json({success:false,errors: error.details[0].message});
+            return res.status(400).json({ success: false, errors: error.details[0].message });
         }
 
-        let check = await Users.findOne({email: value.email});
-        if(check){
-            return res.status(400).json({success:false,errors:"existing user found with same email address"});
+        let check = await Users.findOne({ email: value.email });
+        if (check) {
+            return res.status(400).json({ success: false, errors: "existing user found with same email address" });
         }
-        
+
         let cart = {};
-        for (let i = 0; i < 300; i++){
-            cart[i]=0;
+        for (let i = 0; i < 300; i++) {
+            cart[i] = 0;
         }
-        
+
         const user = new Users({
             name: value.name,
             email: value.email,
@@ -401,10 +402,10 @@ app.post('/signup',async (req,res) =>{
         };
 
         const token = jwt.sign(data, process.env.JWT_SECRET || "default_jwt_secret");
-        res.json({success:true,token});
+        res.json({ success: true, token });
     } catch (error) {
         console.error("Error during signup:", error);
-        res.status(500).json({success:false,errors:"Internal server error"});
+        res.status(500).json({ success: false, errors: "Internal server error" });
     }
 })
 
@@ -414,7 +415,7 @@ app.post('/adminsignup', requireAuth, hasRole(['admin']), async (req, res) => {
     try {
         // Block mass assignment - only allow specific fields
         const allowed = pick(req.body, ['name', 'email', 'password']);
-        
+
         // Check if admin with the same email already exists
         const existingAdmin = await Admins.findOne({ email: allowed.email });
 
@@ -451,49 +452,49 @@ app.post('/adminsignup', requireAuth, hasRole(['admin']), async (req, res) => {
     }
 });
 
-app.post('/login', async (req,res) => {
+app.post('/login', async (req, res) => {
     try {
         // Validate input
         const { error, value } = loginSchema.validate(req.body, { allowUnknown: false });
         if (error) {
-            return res.status(400).json({success:false,errors: error.details[0].message});
+            return res.status(400).json({ success: false, errors: error.details[0].message });
         }
 
-        let user = await Users.findOne({email: value.email});
-        if(user){
+        let user = await Users.findOne({ email: value.email });
+        if (user) {
             const passCompare = value.password === user.password;
-            if(passCompare){
+            if (passCompare) {
                 const data = {
-                    user:{
+                    user: {
                         id: user.id
                     }
                 }
                 const token = jwt.sign(data, process.env.JWT_SECRET || "default_jwt_secret");
-                res.json({success:true,token});
+                res.json({ success: true, token });
             } else {
-                res.json({success:false,errors:"Invalid credentials"});
+                res.json({ success: false, errors: "Invalid credentials" });
             }
         } else {
-            res.json({success:false,errors:"Invalid credentials"});
+            res.json({ success: false, errors: "Invalid credentials" });
         }
     } catch (error) {
         console.error("Error during login:", error);
-        res.status(500).json({success:false,errors:"Internal server error"});
+        res.status(500).json({ success: false, errors: "Internal server error" });
     }
 })
 
-app.post('/adminlogin', async (req,res) => {
+app.post('/adminlogin', async (req, res) => {
     try {
         // Validate input
         const { error, value } = loginSchema.validate(req.body, { allowUnknown: false });
         if (error) {
-            return res.status(400).json({success:false,errors: error.details[0].message});
+            return res.status(400).json({ success: false, errors: error.details[0].message });
         }
 
-        let Admin = await Admins.findOne({email: value.email});
-        if(Admin){
+        let Admin = await Admins.findOne({ email: value.email });
+        if (Admin) {
             const passCompare = value.password === Admin.password;
-            if(passCompare){
+            if (passCompare) {
                 const data = {
                     Admin: {
                         id: Admin._id,
@@ -503,20 +504,20 @@ app.post('/adminlogin', async (req,res) => {
                     }
                 };
                 const token = jwt.sign(data, process.env.JWT_SECRET || "default_jwt_secret");
-                res.json({success:true,token});
+                res.json({ success: true, token });
             } else {
-                res.json({success:false,errors:"Invalid credentials"});
+                res.json({ success: false, errors: "Invalid credentials" });
             }
         } else {
-            res.json({success:false,errors:"Invalid credentials"});
+            res.json({ success: false, errors: "Invalid credentials" });
         }
     } catch (error) {
         console.error("Error during admin login:", error);
-        res.status(500).json({success:false,errors:"Internal server error"});
+        res.status(500).json({ success: false, errors: "Internal server error" });
     }
 })
 
-app.get('/newcollections', requireAuth, async (req,res) =>{
+app.get('/newcollections', requireAuth, async (req, res) => {
     let products = await Product.find({});
     let newcollection = products.slice(1).slice(-8);
     console.log("NewCollection Fetched");
@@ -524,18 +525,18 @@ app.get('/newcollections', requireAuth, async (req,res) =>{
 })
 
 // jwt secret exposure vulnerability was fixed by kasundi
-const fetchUser = async (req,res,next)=>{
+const fetchUser = async (req, res, next) => {
     const token = req.header('auth-token');
-    if(!token){
-        res.status(401).send({errors:"please authenticate using valid token"})
+    if (!token) {
+        res.status(401).send({ errors: "please authenticate using valid token" })
     }
-    else{
-        try{
-            const data = jwt.verify(token,process.env.JWT_SECRET || "default_jwt_secret");
+    else {
+        try {
+            const data = jwt.verify(token, process.env.JWT_SECRET || "default_jwt_secret");
             req.user = data.user;
             next();
-        } catch(error){
-            res.status(401).send({errors:"please authenticate using valid token"})
+        } catch (error) {
+            res.status(401).send({ errors: "please authenticate using valid token" })
         }
     }
 }
@@ -546,62 +547,130 @@ const JWT_SECRET = process.env.JWT_SECRET || process.env.SECRET || 'changeme';
 
 // Auth: requires any logged-in user (populates req.user = { id, role, ... })
 function requireAuth(req, res, next) {
-  try {
-    const h = req.headers.authorization || '';
-    const token = h.startsWith('Bearer ') ? h.slice(7) : null;
-    if (!token) return res.status(401).json({ message: 'Auth required' });
-    const payload = jwt.verify(token, JWT_SECRET);
-    // normalize user/admin token shapes (data.user vs data.Admin from audit)
-    const u = payload?.data?.user || payload?.data?.User || payload?.data?.Admin || payload?.user || payload?.admin || payload;
-    if (!u) return res.status(401).json({ message: 'Invalid token' });
-    req.user = {
-      id: u._id || u.id,
-      role: u.role || u.userRole || (u.isAdmin ? 'admin' : 'user') || 'user',
-      email: u.email
-    };
-    return next();
-  } catch (e) {
-    return res.status(401).json({ message: 'Invalid/expired token' });
-  }
+    try {
+        const h = req.headers.authorization || '';
+        const token = h.startsWith('Bearer ') ? h.slice(7) : null;
+        if (!token) return res.status(401).json({ message: 'Auth required' });
+        const payload = jwt.verify(token, JWT_SECRET);
+        // normalize user/admin token shapes (data.user vs data.Admin from audit)
+        const u = payload?.data?.user || payload?.data?.User || payload?.data?.Admin || payload?.user || payload?.admin || payload;
+        if (!u) return res.status(401).json({ message: 'Invalid token' });
+        req.user = {
+            id: u._id || u.id,
+            role: u.role || u.userRole || (u.isAdmin ? 'admin' : 'user') || 'user',
+            email: u.email
+        };
+        return next();
+    } catch (e) {
+        return res.status(401).json({ message: 'Invalid/expired token' });
+    }
 }
 
 // RBAC: require one of the allowed roles
 function hasRole(roles = []) {
-  return (req, res, next) => {
-    if (!req.user) return res.status(401).json({ message: 'Auth required' });
-    if (!roles.includes(req.user.role)) {
-      return res.status(403).json({ message: 'Forbidden: insufficient role' });
-    }
-    next();
-  };
+    return (req, res, next) => {
+        if (!req.user) return res.status(401).json({ message: 'Auth required' });
+        if (!roles.includes(req.user.role)) {
+            return res.status(403).json({ message: 'Forbidden: insufficient role' });
+        }
+        next();
+    };
 }
 
 // Ownership guard factory for ID-based resources
 // Attempts ownership by common fields; allows admins regardless.
-async function assertOwnershipOrAdmin(Model, idSelector, ownerFields = ['userId','ownerId','createdBy','customerId','assigned_to']) {
-  return async (req, res, next) => {
-    try {
-      if (!req.user) return res.status(401).json({ message: 'Auth required' });
-      if (req.user.role === 'admin') return next();
-      const id = idSelector(req);
-      if (!id) return res.status(400).json({ message: 'Invalid id' });
-      const doc = await Model.findById(id).lean();
-      if (!doc) return res.status(404).json({ message: 'Not found' });
-      const owns = ownerFields.some(f => (doc[f]?.toString?.() || doc[f]) === (req.user.id?.toString?.() || req.user.id));
-      if (!owns) return res.status(403).json({ message: 'Forbidden: not owner' });
-      return next();
-    } catch (e) {
-      return res.status(500).json({ message: 'Ownership check failed' });
-    }
-  };
+async function assertOwnershipOrAdmin(Model, idSelector, ownerFields = ['userId', 'ownerId', 'createdBy', 'customerId', 'assigned_to']) {
+    return async (req, res, next) => {
+        try {
+            if (!req.user) return res.status(401).json({ message: 'Auth required' });
+            if (req.user.role === 'admin') return next();
+            const id = idSelector(req);
+            if (!id) return res.status(400).json({ message: 'Invalid id' });
+            const doc = await Model.findById(id).lean();
+            if (!doc) return res.status(404).json({ message: 'Not found' });
+            const owns = ownerFields.some(f => (doc[f]?.toString?.() || doc[f]) === (req.user.id?.toString?.() || req.user.id));
+            if (!owns) return res.status(403).json({ message: 'Forbidden: not owner' });
+            return next();
+        } catch (e) {
+            return res.status(500).json({ message: 'Ownership check failed' });
+        }
+    };
 }
 
 // Allowlist body fields to prevent mass-assignment
 function pick(obj, allowed = []) {
-  const out = {};
-  allowed.forEach(k => { if (obj[k] !== undefined) out[k] = obj[k]; });
-  return out;
+    const out = {};
+    allowed.forEach(k => { if (obj[k] !== undefined) out[k] = obj[k]; });
+    return out;
 }
+
+// ===== RATE LIMITING (additions) =====
+/**
+ * Prefer per-user key after auth; fallback to IP for unauthenticated requests.
+ * This reduces shared-IP head-of-line blocking without changing login/signup behavior.
+ */
+const keyByUserOrIp = (req) => {
+    try {
+        // If the app already sets req.user (JWT middleware), prefer it
+        if (req.user && (req.user.id || req.user._id)) {
+            return String(req.user.id || req.user._id);
+        }
+    } catch (_) { }
+    return req.ip;
+};
+
+// Lighter limiter for read-heavy GET endpoints (lists/aggregates)
+const readLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 60,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: keyByUserOrIp,
+});
+
+// Stricter limiter for admin-like management endpoints
+const adminLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: keyByUserOrIp,
+});
+
+// Standard limiter for sensitive write/ID routes
+const standardLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: keyByUserOrIp,
+});
+// ===== END additions =====
+
+// Apply standardLimiter to sensitive write/ID routes
+app.use([
+    '/upload',
+    '/addproduct',
+    '/removeproduct',
+    '/updateproduct/:id',
+    '/issues',
+    '/issues/:id',
+    '/order',
+    '/order/:id',
+    '/customers',
+    '/customers/:id',
+    '/users',
+    '/users/:id',
+    '/product/:id',
+    '/product/quantity',
+    '/addbooking',
+    '/updateBookingStatus2/:id',
+    '/updateBookingDetails/:id',
+    '/deleteBookingRequest/:id',
+    '/addservice',
+    '/deleteServices/:id',
+    '/updateservice/:id'
+], standardLimiter);
 
 app.post('/addtocart', fetchUser, async (req, res) => {
     try {
@@ -628,7 +697,7 @@ app.post('/addtocart', fetchUser, async (req, res) => {
         let userData = await Users.findOne({ _id: req.user.id });
         userData.cartData[itemId] += 1;
         await Users.findOneAndUpdate({ _id: req.user.id }, { cartData: userData.cartData });
-        
+
         res.json({ success: true, message: "Item added to cart successfully" });
     } catch (error) {
         console.error("Error while adding item to cart:", error);
@@ -651,7 +720,7 @@ app.post('/removefromcart', fetchUser, async (req, res) => {
         if (userData.cartData[itemId] > 0) {
 
             userData.cartData[itemId] -= 1;
-            
+
             const product = await Product.findOne({ id: itemId });
 
 
@@ -673,9 +742,9 @@ app.post('/removefromcart', fetchUser, async (req, res) => {
 });
 
 
-app.post('/getcart',fetchUser,async (req,res) =>{
+app.post('/getcart', fetchUser, async (req, res) => {
     console.log("GetCart");
-    let userData = await Users.findOne({_id:req.user.id});
+    let userData = await Users.findOne({ _id: req.user.id });
     res.json(userData.cartData)
 })
 
@@ -691,10 +760,10 @@ function generateOrderId() {
     return orderId;
 }
 
-const getDefaultCart = () =>{
+const getDefaultCart = () => {
     let cart = {};
-    for (let index = 0; index < 300 + 1; index++){
-        cart[index]=0;
+    for (let index = 0; index < 300 + 1; index++) {
+        cart[index] = 0;
     }
     return cart;
 }
@@ -702,7 +771,7 @@ const getDefaultCart = () =>{
 const clearCart = async (userId) => {
     try {
         const defaultCart = getDefaultCart();
-        await Users.findByIdAndUpdate(userId, {cartData : defaultCart });
+        await Users.findByIdAndUpdate(userId, { cartData: defaultCart });
         console.log("Cart cleared for user:", userId);
     } catch (error) {
         console.error("Error while clearing cart:", error);
@@ -714,12 +783,12 @@ const clearCart = async (userId) => {
 const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
-        user: process.env.EMAIL_ADD, 
+        user: process.env.EMAIL_ADD,
         pass: process.env.EMAIL_PW
     }
 });
 
-app.post('/checkout',fetchUser, async (req, res) => {
+app.post('/checkout', fetchUser, async (req, res) => {
     try {
         // Validate input
         const { error, value } = orderSchema.validate(req.body, { allowUnknown: false });
@@ -747,7 +816,7 @@ app.post('/checkout',fetchUser, async (req, res) => {
         const userId = req.user.id;
 
         await clearCart(userId);
-        
+
         const mailOptions = {
             from: 'pprajeshvara@gmail.com',
             to: email,
@@ -784,7 +853,7 @@ app.get('/product/quantity/:id', async (req, res) => {
 });
 
 // Define route for fetching all orders data
-app.get('/orders', requireAuth, async (req, res) => {
+app.get('/orders', readLimiter, requireAuth, async (req, res) => { // rate-limit: added
     try {
         // Scope orders based on user role
         const query = req.user.role === 'admin' ? {} : { userId: req.user.id };
@@ -827,7 +896,7 @@ app.put('/order/:id', async (req, res) => {
         if (!updatedOrder) {
             return res.status(404).json({ success: false, error: 'Order not found' });
         }
-        
+
         res.json({ success: true, order: updatedOrder });
 
         const { fullName, email } = updatedOrder;
@@ -841,14 +910,14 @@ app.put('/order/:id', async (req, res) => {
 
         // Send the email
         await transporter.sendMail(mailOptions);
-        
+
     } catch (error) {
         console.error("Error while updating order status:", error);
         res.status(500).json({ success: false, error: "Internal server error" });
     }
 });
 
-app.get('/processingOrders', requireAuth, hasRole(['admin']), async (req, res) => {
+app.get('/processingOrders', readLimiter, requireAuth, hasRole(['admin']), async (req, res) => { // rate-limit: added
     try {
         const processingOrdersCount = await Order.countDocuments({ status: 'processing' });
         res.json({ success: true, processingOrdersCount });
@@ -858,7 +927,7 @@ app.get('/processingOrders', requireAuth, hasRole(['admin']), async (req, res) =
     }
 });
 
-app.get('/shippedOrders', requireAuth, hasRole(['admin']), async (req, res) => {
+app.get('/shippedOrders', readLimiter, requireAuth, hasRole(['admin']), async (req, res) => { // rate-limit: added
     try {
         const shippedOrdersCount = await Order.countDocuments({ status: 'shipped' });
         res.json({ success: true, shippedOrdersCount });
@@ -869,7 +938,7 @@ app.get('/shippedOrders', requireAuth, hasRole(['admin']), async (req, res) => {
 });
 
 // Creating API to get the total amount of all orders
-app.get('/totalAmountOfOrders', requireAuth, hasRole(['admin']), async (req, res) => {
+app.get('/totalAmountOfOrders', readLimiter, requireAuth, hasRole(['admin']), async (req, res) => { // rate-limit: added
     try {
         // Fetch all orders
         const orders = await Order.find({});
@@ -885,7 +954,7 @@ app.get('/totalAmountOfOrders', requireAuth, hasRole(['admin']), async (req, res
 });
 
 
-app.get('/deliveredOrders', requireAuth, hasRole(['admin']), async (req, res) => {
+app.get('/deliveredOrders', readLimiter, requireAuth, hasRole(['admin']), async (req, res) => { // rate-limit: added
     try {
         const deliveredOrdersCount = await Order.countDocuments({ status: 'delivered' });
         res.json({ success: true, deliveredOrdersCount });
@@ -896,7 +965,7 @@ app.get('/deliveredOrders', requireAuth, hasRole(['admin']), async (req, res) =>
 });
 
 // Creating API to get the total amount of all orders
-app.get('/totalAmountOfOrders', requireAuth, hasRole(['admin']), async (req, res) => {
+app.get('/totalAmountOfOrders', readLimiter, requireAuth, hasRole(['admin']), async (req, res) => { // rate-limit: added
     try {
         // Fetch all orders
         const orders = await Order.find({});
@@ -911,7 +980,7 @@ app.get('/totalAmountOfOrders', requireAuth, hasRole(['admin']), async (req, res
     }
 });
 
-app.get('/totalAmountOfDelivered', requireAuth, hasRole(['admin']), async (req, res) => {
+app.get('/totalAmountOfDelivered', readLimiter, requireAuth, hasRole(['admin']), async (req, res) => { // rate-limit: added
     try {
         // Fetch orders with status 'delivered'
         const deliveredOrders = await Order.find({ status: 'delivered' });
@@ -926,7 +995,7 @@ app.get('/totalAmountOfDelivered', requireAuth, hasRole(['admin']), async (req, 
     }
 });
 
-app.get('/totalAmountOfPending', requireAuth, hasRole(['admin']), async (req, res) => {
+app.get('/totalAmountOfPending', readLimiter, requireAuth, hasRole(['admin']), async (req, res) => { // rate-limit: added
     try {
         // Fetch orders with status 'shipped' or 'processing'
         const pendingOrders = await Order.find({ status: { $in: ['shipped', 'processing'] } });
@@ -950,42 +1019,42 @@ const Booking = require('./models/BookingModel');
 
 app.post('/addbooking', requireAuth, async (req, res) => {
     try {
-      // Validate input
-      const { error, value } = bookingSchema.validate(req.body, { allowUnknown: false });
-      if (error) {
-        return res.status(400).json({ error: error.details[0].message });
-      }
-  
-      // Block mass assignment - only allow specific fields
-      const allowed = pick(value, ['ownerName', 'email', 'phone', 'specialNotes', 'location', 'serviceType', 'vehicleModel', 'vehicleNumber', 'date', 'time']);
-      
-      // Create a new booking instance
-      const newBooking = new Booking(allowed);
-  
-      // Save the booking to the database
-      await newBooking.save();
-      console.log("booking added");
-  
-      res.status(201).json({ message: 'Booking saved successfully' });
+        // Validate input
+        const { error, value } = bookingSchema.validate(req.body, { allowUnknown: false });
+        if (error) {
+            return res.status(400).json({ error: error.details[0].message });
+        }
+
+        // Block mass assignment - only allow specific fields
+        const allowed = pick(value, ['ownerName', 'email', 'phone', 'specialNotes', 'location', 'serviceType', 'vehicleModel', 'vehicleNumber', 'date', 'time']);
+
+        // Create a new booking instance
+        const newBooking = new Booking(allowed);
+
+        // Save the booking to the database
+        await newBooking.save();
+        console.log("booking added");
+
+        res.status(201).json({ message: 'Booking saved successfully' });
     } catch (error) {
-      console.error('Error saving booking:', error);
-      res.status(500).json({ error: 'Server error' });
+        console.error('Error saving booking:', error);
+        res.status(500).json({ error: 'Server error' });
     }
-  });
+});
 
 
-  const sendEmail = require('./email');
+const sendEmail = require('./email');
 
-  // Update booking status route
+// Update booking status route
 app.put('/updateBookingStatus2/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        
+
         // Validate status
         const { error, value } = Joi.object({
             status: Joi.string().valid('pending', 'accepted', 'in_progress', 'completed', 'cancelled').required()
         }).validate(req.body, { allowUnknown: false });
-        
+
         if (error) {
             return res.status(400).json({ error: error.details[0].message });
         }
@@ -995,16 +1064,16 @@ app.put('/updateBookingStatus2/:id', async (req, res) => {
             { $set: { status: value.status } }, // Update status
             { new: true, runValidators: true }
         );
-        
+
         if (!updatedBooking) {
             return res.status(404).json({ error: 'Booking not found' });
         }
-        
+
         if (updatedBooking.status === 'accepted') {
             const { email } = updatedBooking;
             const subject = 'Booking Accepted';
             const text = 'We are excited to confirm your booking! Your service request has been accepted. We look forward to serving you on Booking Date at Booking Time. Should you have any questions, feel free to reach out. Thank you for choosing us.';
-      
+
             await sendEmail(email, subject, text);
         }
 
@@ -1014,53 +1083,53 @@ app.put('/updateBookingStatus2/:id', async (req, res) => {
         res.status(500).json({ error: 'Server error' });
     }
 });
-  
 
-    // Update booking details route
-    app.put('/updateBookingDetails/:id', requireAuth, hasRole(['admin']), async (req, res) => {
-        try {
-          const { id } = req.params;
-          
-          // Validate input
-          const { error, value } = bookingSchema.validate(req.body, { allowUnknown: false });
-          if (error) {
+
+// Update booking details route
+app.put('/updateBookingDetails/:id', requireAuth, hasRole(['admin']), async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // Validate input
+        const { error, value } = bookingSchema.validate(req.body, { allowUnknown: false });
+        if (error) {
             return res.status(400).json({ error: error.details[0].message });
-          }
-          
-          // Block mass assignment - only allow specific fields
-          const allowed = pick(value, ['ownerName', 'email', 'phone', 'specialNotes', 'location', 'serviceType', 'vehicleModel', 'vehicleNumber', 'date', 'time']);
-          
-          const updatedBooking = await Booking.findByIdAndUpdate(
+        }
+
+        // Block mass assignment - only allow specific fields
+        const allowed = pick(value, ['ownerName', 'email', 'phone', 'specialNotes', 'location', 'serviceType', 'vehicleModel', 'vehicleNumber', 'date', 'time']);
+
+        const updatedBooking = await Booking.findByIdAndUpdate(
             id,
             allowed, // Update booking details
             { new: true, runValidators: true }
-          );
-    
+        );
+
         if (!updatedBooking) {
-          return res.status(404).json({ error: 'Booking not found' });
+            return res.status(404).json({ error: 'Booking not found' });
         }
         res.status(200).json({ message: 'Booking details updated successfully', updatedBooking });
-        } catch (error) {
+    } catch (error) {
         console.error('Error updating booking details:', error);
         res.status(500).json({ error: 'Server error' });
-        }
-        }); 
-    
-    //get all booking details
-    app.get('/allBookingRequest', requireAuth, hasRole(['admin']), async (req, res) => {
-        try {
-            const data = await Booking.find();
-            res.json(data);
-            console.log("All Booking Requests Fetched");
-    
-        } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: 'Server error' });
-        }
-        }
-    );  
-        
-    //pathum's Service Routes
+    }
+});
+
+//get all booking details
+app.get('/allBookingRequest', requireAuth, hasRole(['admin']), async (req, res) => {
+    try {
+        const data = await Booking.find();
+        res.json(data);
+        console.log("All Booking Requests Fetched");
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server error' });
+    }
+}
+);
+
+//pathum's Service Routes
 
 const Service = require('./models/ServiceModel');
 
@@ -1098,52 +1167,52 @@ app.post('/addservice', requireAuth, hasRole(['admin']), upload.single('image'),
 // 3. Create API endpoint to retrieve data
 app.get('/allServices', requireAuth, async (req, res) => {
     try {
-      const data = await Service.find();
-      res.json(data);
-      console.log("All Services Fetched");
+        const data = await Service.find();
+        res.json(data);
+        console.log("All Services Fetched");
 
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: 'Server error' });
+        console.error(error);
+        res.status(500).json({ message: 'Server error' });
     }
-  });
+});
 
 
-  // Define route for deleting booking requests
+// Define route for deleting booking requests
 app.delete('/deleteBookingRequest/:id', requireAuth, hasRole(['admin']), async (req, res) => {
     const requestId = req.params.id;
-  
+
     try {
-      // Find the booking request by ID and delete it
-      await Booking.findByIdAndDelete(requestId);
-      res.status(200).send('Booking request deleted successfully');
+        // Find the booking request by ID and delete it
+        await Booking.findByIdAndDelete(requestId);
+        res.status(200).send('Booking request deleted successfully');
     } catch (error) {
-      console.error('Error deleting booking request:', error);
-      res.status(500).send('Internal server error');
+        console.error('Error deleting booking request:', error);
+        res.status(500).send('Internal server error');
     }
-  });
-  
-  
-  
-  // Define route for deleting Services
+});
+
+
+
+// Define route for deleting Services
 app.delete('/deleteServices/:id', requireAuth, hasRole(['admin']), async (req, res) => {
     const requestId = req.params.id;
-  
-    try {
-      // Find the Services by ID and delete it
-      await Service.findByIdAndDelete(requestId);
-      res.status(200).send('Service deleted successfully');
-    } catch (error) {
-      console.error('Error deleting service:', error);
-      res.status(500).send('Internal server error');
-    }
-  });
 
-  // Add a new route to handle service updates
+    try {
+        // Find the Services by ID and delete it
+        await Service.findByIdAndDelete(requestId);
+        res.status(200).send('Service deleted successfully');
+    } catch (error) {
+        console.error('Error deleting service:', error);
+        res.status(500).send('Internal server error');
+    }
+});
+
+// Add a new route to handle service updates
 app.put('/updateservice/:id', requireAuth, hasRole(['admin']), async (req, res) => {
     try {
         const { id } = req.params;
-        
+
         // Validate input
         const { error, value } = serviceSchema.validate(req.body, { allowUnknown: false });
         if (error) {
@@ -1155,11 +1224,11 @@ app.put('/updateservice/:id', requireAuth, hasRole(['admin']), async (req, res) 
 
         // Find and update the service in the database
         const updatedService = await Service.findByIdAndUpdate(id, allowed, { new: true, runValidators: true });
-        
+
         if (!updatedService) {
             return res.status(404).json({ error: 'Service not found' });
         }
-        
+
         console.log("Service updated");
         res.status(200).json({ message: 'Service updated successfully', service: updatedService });
     } catch (error) {
@@ -1168,11 +1237,11 @@ app.put('/updateservice/:id', requireAuth, hasRole(['admin']), async (req, res) 
     }
 });
 
-  //Ruwindi routes
-  const Issue = require('./models/issueModel');
+//Ruwindi routes
+const Issue = require('./models/issueModel');
 const Admin = require("./models/OnlineShopModels/Admin");
 
-  //Route for save new Issue
+//Route for save new Issue
 app.post('/issues', requireAuth, async (request, response) => {
     try {
         // Validate input
@@ -1350,18 +1419,18 @@ app.delete("/customers/:id", requireAuth, hasRole(['admin']), (req, res) => {
     Customers.findByIdAndDelete(req.params.id).then(() =>
         res
             .json({ msg: "Delete successfully" }))
-            .catch(() => res.status(400).json({ msg: "Delete fail" }));
+        .catch(() => res.status(400).json({ msg: "Delete fail" }));
 });
 
-app.get('/allusers', requireAuth, hasRole(['admin']), async (req, res)=>{
+app.get('/allusers', adminLimiter, requireAuth, hasRole(['admin']), async (req, res) => { // rate-limit: added
     let users = await Admins.find({})
     console.log("All Users Fetched");
     res.send(users);
 })
 
-app.delete("/users/:id", requireAuth, hasRole(['admin']), (req, res) => {
+app.delete("/users/:id", adminLimiter, requireAuth, hasRole(['admin']), (req, res) => { // rate-limit: added
     Admins.findByIdAndDelete(req.params.id).then(() =>
         res
             .json({ msg: "Delete successfully" }))
-            .catch(() => res.status(400).json({ msg: "Delete fail" }));
+        .catch(() => res.status(400).json({ msg: "Delete fail" }));
 });
