@@ -1,11 +1,13 @@
 // src/Components/AuthStatus.jsx
 import { useEffect, useState } from "react";
 
+const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:4000";
+
 export default function AuthStatus() {
   const [data, setData] = useState(null);
 
   useEffect(() => {
-    fetch("http://localhost:4000/api/me", {
+    fetch(`${API_BASE}/api/me`, {
       method: "GET",
       credentials: "include", // 👈 send cookie
       headers: { "Content-Type": "application/json" },

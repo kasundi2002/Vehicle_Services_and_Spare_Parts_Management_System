@@ -9,8 +9,10 @@ const FilteredProductsPage = () => {
 
   const [all_product,setAll_product] = useState([]);
 
+  const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:4000";
+
     useEffect(()=>{
-        fetch('https://vehicle-sever.onrender.com/allproducts')
+        fetch(`${API_BASE}/allproducts`)
         .then((response)=>response.json())
         .then((data)=>setAll_product(data))
      },[])

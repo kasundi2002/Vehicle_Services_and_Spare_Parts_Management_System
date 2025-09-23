@@ -494,7 +494,7 @@ app.post("/removeproduct", async (req, res) => {
   }
 });
 
-app.get("/allproducts", requireJwtAuth, async (req, res) => {
+app.get("/allproducts", async (req, res) => {
   const products = await Product.find({});
   res.send(products);
 });
@@ -910,7 +910,7 @@ app.post("/addservice", requireJwtAuth, hasRole(["admin"]), upload.single("image
   }
 });
 
-app.get("/allServices", requireJwtAuth, async (req, res) => {
+app.get("/allServices", async (req, res) => {
   try {
     const data = await Service.find();
     res.json(data);

@@ -1,103 +1,128 @@
-import React, {createContext, useEffect, useState} from "react";
+import React, { createContext, useEffect, useState } from "react";
 
 export const ProductContext = createContext(null);
 
-const getDefaultCart = () =>{
-    let cart = {};
-    for (let index = 0; index < 300 + 1; index++){
-        cart[index]=0;
-    }
-    return cart;
+const getDefaultCart = () => {
+  const cart = {};
+  for (let i = 0; i <= 300; i++) cart[i] = 0;
+  return cart;
+};
+
+const API_BASE = process.env.BACKEND_API_URL || "http://localhost:4000";
+
+async function fetchJSON(url, options = {}) {
+  const res = await fetch(url, {
+    headers: { Accept: "application/json", ...(options.headers || {}) },
+    ...options,
+  });
+
+  // Read body once
+  const raw = await res.text();
+  const isJson = (res.headers.get("content-type") || "").includes("application/json");
+  const data = isJson && raw ? JSON.parse(raw) : null;
+
+  if (!res.ok) {
+    const msg = (data && (data.message || data.error)) || raw || `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  return data; // may be null for 204
 }
 
 const ProductContextProvider = (props) => {
+  const [all_product, setAll_product] = useState([]);
+  const [cartItems, setCartItems] = useState(getDefaultCart());
 
-    const [all_product,setAll_product] = useState([]);
-    const [cartItems,setCartItems] = useState(getDefaultCart());
+  useEffect(() => {
+    const token = localStorage.getItem("auth-token");
 
-    useEffect(()=>{
-       fetch('https://vehicle-sever.onrender.com/allproducts')
-       .then((response)=>response.json())
-       .then((data)=>setAll_product(data))
+    // Load products (send token if route is protected)
+    fetchJSON(`${API_BASE}/allproducts`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then((data) => setAll_product(Array.isArray(data) ? data : []))
+      .catch((err) => {
+        console.warn("allproducts failed:", err.message);
+        setAll_product([]); // keep UI stable
+      });
 
-       if(localStorage.getItem('auth-token')){
-        fetch('https://vehicle-sever.onrender.com/getcart',{
-            method:'POST',
-            headers:{
-                Accept:'application/form-data',
-                'auth-token':`${localStorage.getItem('auth-token')}`,
-                'Content-Type':'application/json',
-            },
-            body:"",
-        }).then((response)=>response.json())
-        .then((data)=>setCartItems(data));
+    // Load cart only if logged in
+    if (token) {
+      fetchJSON(`${API_BASE}/getcart`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`, // your server also accepts 'auth-token' if you prefer
+        },
+        body: "{}",
+      })
+        .then((data) => data && setCartItems(data))
+        .catch((err) => console.warn("getcart failed:", err.message));
     }
-    },[])
-    
-    
-    const addToCart = (itemId) =>{
-        setCartItems((prev)=>({...prev,[itemId]:prev[itemId] + 1}))
-        if(localStorage.getItem('auth-token')){
-            fetch('https://vehicle-sever.onrender.com/addtocart',{
-                method:'POST',
-                headers:{
-                    Accept:'application/form-data',
-                    'auth-token':`${localStorage.getItem('auth-token')}`,
-                    'Content-Type':'application/json',
-                },
-                body:JSON.stringify({ "itemId": itemId }),
-            })
-            .then((response)=>response.json())
-            .then((data)=>console.log(data));
+  }, []);
+
+  const addToCart = (itemId) => {
+    setCartItems((prev) => ({ ...prev, [itemId]: prev[itemId] + 1 }));
+
+    const token = localStorage.getItem("auth-token");
+    if (!token) return;
+
+    fetchJSON(`${API_BASE}/addtocart`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ itemId }),
+    }).catch((err) => console.warn("addtocart failed:", err.message));
+  };
+
+  const removeFromCart = (itemId) => {
+    setCartItems((prev) => ({ ...prev, [itemId]: prev[itemId] - 1 }));
+
+    const token = localStorage.getItem("auth-token");
+    if (!token) return;
+
+    fetchJSON(`${API_BASE}/removefromcart`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ itemId }),
+    }).catch((err) => console.warn("removefromcart failed:", err.message));
+  };
+
+  const getTotalCartAmount = () => {
+    let total = 0;
+    for (const item in cartItems) {
+      if (cartItems[item] > 0) {
+        const itemInfo = all_product.find((p) => p.id === Number(item));
+        if (itemInfo?.new_price != null) {
+          total += itemInfo.new_price * cartItems[item];
         }
+      }
     }
+    return total;
+  };
 
-    const removeFromCart = (itemId) =>{
-        setCartItems((prev)=>({...prev,[itemId]:prev[itemId] - 1}));
-        if(localStorage.getItem('auth-token')){
-            fetch('https://vehicle-sever.onrender.com/removefromcart',{
-                method:'POST',
-                headers:{
-                    Accept:'application/form-data',
-                    'auth-token':`${localStorage.getItem('auth-token')}`,
-                    'Content-Type':'application/json',
-                },
-                body:JSON.stringify({ "itemId": itemId }),
-            })
-            .then((response)=>response.json())
-            .then((data)=>console.log(data));
-        }
+  const getTotalCartItems = () => {
+    let total = 0;
+    for (const item in cartItems) {
+      if (cartItems[item] > 0) total += cartItems[item];
     }
+    return total;
+  };
 
-    const getTotalCartAmount = () => {
-        let totalAmount = 0;
-        for(const item in cartItems)
-        {
-            if(cartItems[item]>0)
-            {
-                let itemInfo = all_product.find((product)=>product.id === Number(item))
-                totalAmount += itemInfo.new_price * cartItems[item];
-            }
-        }
-        return totalAmount;
-    }
+  const contextValue = {
+    getTotalCartItems,
+    getTotalCartAmount,
+    all_product,
+    cartItems,
+    addToCart,
+    removeFromCart,
+  };
 
-    const getTotalCartItems = () =>{
-        let totalItem = 0;
-        for(const item in cartItems){
-            if(cartItems[item]>0){
-                totalItem += cartItems[item]
-            }
-        }
-        return totalItem;
-    }
-
-    const contextValue = {getTotalCartItems,getTotalCartAmount,all_product,cartItems,addToCart,removeFromCart};
-    return (
-        <ProductContext.Provider value={contextValue}>
-            {props.children}
-        </ProductContext.Provider>
-    )
-}
+  return <ProductContext.Provider value={contextValue}>{props.children}</ProductContext.Provider>;
+};
 
 export default ProductContextProvider;
