@@ -36,6 +36,7 @@ import Userprofile from '../../components/customerComp/Userprofile';
 import Edituser from '../../components/customerComp/Edituser';
 import ViewDetails from '../../components/customerComp/Viewdetails';
 import UpdateCustomerForm from '../../components/customerComp/Updatecustomer';
+import RateLimitMonitor from "../RateLimitMonitor";
 
 
 const Admin = () => {
@@ -129,6 +130,8 @@ const Admin = () => {
         <Route path="/customer/edituser" element={<Edituser />} />
         <Route path="/customer/viewdetails/:id" element={<ViewDetails />} />
         <Route path="/customer/updatecustomer/:id" element={<UpdateCustomerForm />} />
+        <Route path="/rate-limit-monitor" element={<RateLimitMonitor />} />
+
       </Routes>
     </div>
   );
