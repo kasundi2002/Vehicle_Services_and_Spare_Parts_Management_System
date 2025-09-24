@@ -17,6 +17,9 @@ const nodemailer = require("nodemailer");
 const passport = require("passport");
 const rateLimit = require("express-rate-limit");
 const mongoSanitize = require("mongo-sanitize");
+const speakeasy = require("speakeasy");
+const { v4: uuidv4 } = require("uuid");
+const crypto = require("crypto");
 
 // Google OpenID Connect & OAuth2
 const { Issuer, generators } = require("openid-client");
@@ -681,13 +684,58 @@ app.post("/login", authLimiter, async (req, res) => {
     if (error) return res.status(400).json({ success: false, errors: error.details[0].message });
 
     const user = await Users.findOne({ email: value.email });
-    if (!user) return res.json({ success: false, errors: "Invalid credentials" });
+    if (!user) {
+      // Log failed login attempt
+      console.log(`Failed login attempt for email: ${value.email} - User not found`);
+      return res.json({ success: false, errors: "Invalid credentials" });
+    }
+
+    // Check if account is locked
+    if (user.isLocked) {
+      console.log(`Login attempt for locked account: ${value.email}`);
+      return res.status(423).json({ 
+        success: false, 
+        errors: "Account is temporarily locked due to multiple failed login attempts. Please try again later." 
+      });
+    }
 
     // Use bcrypt to compare password
     const isPasswordValid = await user.comparePassword(value.password);
-    if (!isPasswordValid) return res.json({ success: false, errors: "Invalid credentials" });
+    if (!isPasswordValid) {
+      // Increment login attempts
+      await user.incLoginAttempts();
+      console.log(`Failed login attempt for email: ${value.email} - Invalid password`);
+      return res.json({ success: false, errors: "Invalid credentials" });
+    }
+
+    // Reset login attempts on successful login
+    await user.resetLoginAttempts();
+
+    // Check if MFA is enabled
+    if (user.mfaEnabled) {
+      // Return a temporary token for MFA verification
+      const tempToken = jwt.sign({ 
+        user: { id: user.id, email: user.email, name: user.name, role: "user" },
+        mfaRequired: true 
+      }, JWT_SECRET, { expiresIn: "5m" });
+      
+      return res.json({ 
+        success: true, 
+        mfaRequired: true, 
+        tempToken,
+        message: "MFA verification required" 
+      });
+    }
 
     const token = jwt.sign({ user: { id: user.id, email: user.email, name: user.name, role: "user" } }, JWT_SECRET, { expiresIn: "8h" });
+    
+    // Update last login
+    user.lastLogin = new Date();
+    await user.save();
+    
+    // Log successful login
+    console.log(`Successful login for user: ${user.email}`);
+    
     res.json({ success: true, token });
   } catch (err) {
     console.error("Error during login:", err);
@@ -701,16 +749,328 @@ app.post("/adminlogin", authLimiter, async (req, res) => {
     if (error) return res.status(400).json({ success: false, errors: error.details[0].message });
 
     const admin = await Admins.findOne({ email: value.email });
-    if (!admin) return res.json({ success: false, errors: "Invalid credentials" });
+    if (!admin) {
+      // Log failed admin login attempt
+      console.log(`Failed admin login attempt for email: ${value.email} - Admin not found`);
+      return res.json({ success: false, errors: "Invalid credentials" });
+    }
+
+    // Check if account is locked
+    if (admin.isLocked) {
+      console.log(`Admin login attempt for locked account: ${value.email}`);
+      return res.status(423).json({ 
+        success: false, 
+        errors: "Account is temporarily locked due to multiple failed login attempts. Please try again later." 
+      });
+    }
 
     // Use bcrypt to compare password
     const isPasswordValid = await admin.comparePassword(value.password);
-    if (!isPasswordValid) return res.json({ success: false, errors: "Invalid credentials" });
+    if (!isPasswordValid) {
+      // Increment login attempts
+      await admin.incLoginAttempts();
+      console.log(`Failed admin login attempt for email: ${value.email} - Invalid password`);
+      return res.json({ success: false, errors: "Invalid credentials" });
+    }
+
+    // Reset login attempts on successful login
+    await admin.resetLoginAttempts();
+
+    // Check if MFA is enabled
+    if (admin.mfaEnabled) {
+      // Return a temporary token for MFA verification
+      const tempToken = jwt.sign({ 
+        user: { id: admin._id, email: admin.email, name: admin.name, role: "admin" },
+        mfaRequired: true 
+      }, JWT_SECRET, { expiresIn: "5m" });
+      
+      return res.json({ 
+        success: true, 
+        mfaRequired: true, 
+        tempToken,
+        message: "MFA verification required" 
+      });
+    }
 
     const token = jwt.sign({ user: { id: admin._id, email: admin.email, name: admin.name, role: "admin" } }, JWT_SECRET, { expiresIn: "8h" });
+    
+    // Update last login
+    admin.lastLogin = new Date();
+    await admin.save();
+    
+    // Log successful admin login
+    console.log(`Successful admin login for: ${admin.email}`);
+    
     res.json({ success: true, token });
   } catch (err) {
     console.error("Error during admin login:", err);
+    res.status(500).json({ success: false, errors: "Internal server error" });
+  }
+});
+
+// MFA verification endpoint
+app.post("/verify-mfa", authLimiter, async (req, res) => {
+  try {
+    const { tempToken, mfaToken } = req.body;
+    
+    if (!tempToken || !mfaToken) {
+      return res.status(400).json({ success: false, errors: "Token and MFA code required" });
+    }
+
+    // Verify temp token
+    const payload = jwt.verify(tempToken, JWT_SECRET);
+    if (!payload.mfaRequired) {
+      return res.status(400).json({ success: false, errors: "Invalid token" });
+    }
+
+    const user = await Users.findOne({ email: payload.user.email });
+    if (!user) {
+      const admin = await Admins.findOne({ email: payload.user.email });
+      if (!admin) {
+        return res.status(404).json({ success: false, errors: "User not found" });
+      }
+      
+      // Verify MFA for admin
+      const isValidMfa = admin.verifyMfaToken(mfaToken);
+      if (!isValidMfa) {
+        return res.status(400).json({ success: false, errors: "Invalid MFA code" });
+      }
+      
+      const token = jwt.sign({ user: payload.user }, JWT_SECRET, { expiresIn: "8h" });
+      return res.json({ success: true, token });
+    }
+
+    // Verify MFA for user
+    const isValidMfa = user.verifyMfaToken(mfaToken);
+    if (!isValidMfa) {
+      return res.status(400).json({ success: false, errors: "Invalid MFA code" });
+    }
+
+    const token = jwt.sign({ user: payload.user }, JWT_SECRET, { expiresIn: "8h" });
+    res.json({ success: true, token });
+  } catch (err) {
+    console.error("Error during MFA verification:", err);
+    res.status(500).json({ success: false, errors: "Internal server error" });
+  }
+});
+
+// Password reset request
+app.post("/forgot-password", authLimiter, async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({ success: false, errors: "Email required" });
+    }
+
+    const user = await Users.findOne({ email });
+    if (!user) {
+      // Don't reveal if user exists
+      return res.json({ success: true, message: "If the email exists, a reset link has been sent" });
+    }
+
+    const resetToken = user.generatePasswordResetToken();
+    await user.save();
+
+    // Send reset email
+    const resetUrl = `${process.env.FRONTEND_ORIGIN || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
+    const mailOptions = {
+      from: EMAIL_ADD,
+      to: email,
+      subject: "Password Reset Request",
+      html: `
+        <h2>Password Reset Request</h2>
+        <p>You requested a password reset for your account.</p>
+        <p>Click the link below to reset your password (expires in 10 minutes):</p>
+        <a href="${resetUrl}">Reset Password</a>
+        <p>If you didn't request this, please ignore this email.</p>
+      `
+    };
+
+    await transporter.sendMail(mailOptions);
+    res.json({ success: true, message: "If the email exists, a reset link has been sent" });
+  } catch (err) {
+    console.error("Error during password reset request:", err);
+    res.status(500).json({ success: false, errors: "Internal server error" });
+  }
+});
+
+// Password reset
+app.post("/reset-password", authLimiter, async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+    
+    if (!token || !newPassword) {
+      return res.status(400).json({ success: false, errors: "Token and new password required" });
+    }
+
+    const user = await Users.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({ success: false, errors: "Invalid or expired reset token" });
+    }
+
+    // Validate new password
+    const { error } = Joi.string()
+      .min(8)
+      .max(128)
+      .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/)
+      .required()
+      .validate(newPassword);
+
+    if (error) {
+      return res.status(400).json({ 
+        success: false, 
+        errors: "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character" 
+      });
+    }
+
+    user.password = newPassword;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
+
+    res.json({ success: true, message: "Password reset successfully" });
+  } catch (err) {
+    console.error("Error during password reset:", err);
+    res.status(500).json({ success: false, errors: "Internal server error" });
+  }
+});
+
+// MFA setup - generate secret
+app.post("/setup-mfa", requireJwtAuth, async (req, res) => {
+  try {
+    const user = await Users.findById(req.user.id);
+    if (!user) {
+      const admin = await Admins.findById(req.user.id);
+      if (!admin) {
+        return res.status(404).json({ success: false, errors: "User not found" });
+      }
+      
+      const secret = admin.generateMfaSecret();
+      await admin.save();
+      
+      return res.json({ 
+        success: true, 
+        secret: secret.base32,
+        qrCodeUrl: secret.otpauth_url 
+      });
+    }
+    
+    const secret = user.generateMfaSecret();
+    await user.save();
+    
+    res.json({ 
+      success: true, 
+      secret: secret.base32,
+      qrCodeUrl: secret.otpauth_url 
+    });
+  } catch (err) {
+    console.error("Error setting up MFA:", err);
+    res.status(500).json({ success: false, errors: "Internal server error" });
+  }
+});
+
+// MFA setup - verify and enable
+app.post("/enable-mfa", requireJwtAuth, async (req, res) => {
+  try {
+    const { token } = req.body;
+    
+    if (!token) {
+      return res.status(400).json({ success: false, errors: "MFA token required" });
+    }
+
+    const user = await Users.findById(req.user.id);
+    if (!user) {
+      const admin = await Admins.findById(req.user.id);
+      if (!admin) {
+        return res.status(404).json({ success: false, errors: "User not found" });
+      }
+      
+      const isValid = admin.verifyMfaToken(token);
+      if (!isValid) {
+        return res.status(400).json({ success: false, errors: "Invalid MFA token" });
+      }
+      
+      admin.mfaEnabled = true;
+      await admin.save();
+      
+      return res.json({ success: true, message: "MFA enabled successfully" });
+    }
+    
+    const isValid = user.verifyMfaToken(token);
+    if (!isValid) {
+      return res.status(400).json({ success: false, errors: "Invalid MFA token" });
+    }
+    
+    user.mfaEnabled = true;
+    await user.save();
+    
+    res.json({ success: true, message: "MFA enabled successfully" });
+  } catch (err) {
+    console.error("Error enabling MFA:", err);
+    res.status(500).json({ success: false, errors: "Internal server error" });
+  }
+});
+
+// Session timeout management
+app.get("/session-status", requireJwtAuth, async (req, res) => {
+  try {
+    const token = getTokenFromReq(req);
+    const payload = jwt.verify(token, JWT_SECRET);
+    
+    const timeLeft = payload.exp - Math.floor(Date.now() / 1000);
+    
+    res.json({ 
+      success: true, 
+      timeLeft,
+      expiresAt: new Date(payload.exp * 1000).toISOString()
+    });
+  } catch (err) {
+    res.status(401).json({ success: false, errors: "Invalid session" });
+  }
+});
+
+// Refresh token endpoint
+app.post("/refresh-token", requireJwtAuth, async (req, res) => {
+  try {
+    const user = await Users.findById(req.user.id);
+    if (!user) {
+      const admin = await Admins.findById(req.user.id);
+      if (!admin) {
+        return res.status(404).json({ success: false, errors: "User not found" });
+      }
+      
+      const token = jwt.sign({ 
+        user: { id: admin._id, email: admin.email, name: admin.name, role: "admin" } 
+      }, JWT_SECRET, { expiresIn: "8h" });
+      
+      return res.json({ success: true, token });
+    }
+    
+    const token = jwt.sign({ 
+      user: { id: user.id, email: user.email, name: user.name, role: "user" } 
+    }, JWT_SECRET, { expiresIn: "8h" });
+    
+    res.json({ success: true, token });
+  } catch (err) {
+    console.error("Error refreshing token:", err);
+    res.status(500).json({ success: false, errors: "Internal server error" });
+  }
+});
+
+// Logout endpoint
+app.post("/logout", requireJwtAuth, async (req, res) => {
+  try {
+    // In a production environment, you would maintain a blacklist of tokens
+    // For now, we'll just return success as JWT tokens are stateless
+    console.log(`User logout: ${req.user.email}`);
+    res.json({ success: true, message: "Logged out successfully" });
+  } catch (err) {
+    console.error("Error during logout:", err);
     res.status(500).json({ success: false, errors: "Internal server error" });
   }
 });
