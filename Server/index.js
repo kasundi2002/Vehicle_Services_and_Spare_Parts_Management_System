@@ -20,6 +20,9 @@ const mongoSanitize = require("mongo-sanitize");
 const speakeasy = require("speakeasy");
 const { v4: uuidv4 } = require("uuid");
 const crypto = require("crypto");
+const fs = require("fs");
+const { fileTypeFromBuffer } = require("file-type");
+const sharp = require("sharp");
 
 // Google OpenID Connect & OAuth2
 const { Issuer, generators } = require("openid-client");
@@ -141,6 +144,9 @@ const authLimiter = rateLimit({
 
 // Apply rate limiting
 app.use(generalLimiter);
+
+// Apply data integrity validation to all routes
+app.use(validateDataIntegrity);
 
 // --------- SESSIONS (for OIDC/OAuth) ---------
 // In prod (HTTPS), SameSite=None + Secure=true. In dev, we still use None to allow cross-origin fetch with credentials.
@@ -320,6 +326,91 @@ function validateParams(schema) {
   };
 }
 
+// Data integrity validation middleware
+function validateDataIntegrity(req, res, next) {
+  try {
+    // Check for data tampering indicators
+    const suspiciousPatterns = [
+      /<script/i,
+      /javascript:/i,
+      /vbscript:/i,
+      /onload=/i,
+      /onerror=/i,
+      /eval\(/i,
+      /document\./i,
+      /window\./i,
+      /alert\(/i,
+      /confirm\(/i,
+      /prompt\(/i
+    ];
+    
+    // Check request body for suspicious content
+    if (req.body) {
+      const bodyString = JSON.stringify(req.body);
+      for (const pattern of suspiciousPatterns) {
+        if (pattern.test(bodyString)) {
+          console.log(`Suspicious content detected in request body from ${req.ip}`);
+          return res.status(400).json({ 
+            success: false, 
+            error: "Suspicious content detected" 
+          });
+        }
+      }
+    }
+    
+    // Check query parameters
+    if (req.query) {
+      const queryString = JSON.stringify(req.query);
+      for (const pattern of suspiciousPatterns) {
+        if (pattern.test(queryString)) {
+          console.log(`Suspicious content detected in query parameters from ${req.ip}`);
+          return res.status(400).json({ 
+            success: false, 
+            error: "Suspicious content detected" 
+          });
+        }
+      }
+    }
+    
+    next();
+  } catch (error) {
+    console.error("Data integrity validation error:", error);
+    res.status(500).json({ 
+      success: false, 
+      error: "Data validation failed" 
+    });
+  }
+}
+
+// Database operation logging middleware
+function logDatabaseOperation(operation, collection, data) {
+  const logEntry = {
+    timestamp: new Date().toISOString(),
+    operation,
+    collection,
+    data: typeof data === 'object' ? JSON.stringify(data) : data,
+    ip: 'unknown' // Would be set by request context
+  };
+  
+  console.log(`Database operation: ${JSON.stringify(logEntry)}`);
+}
+
+// Enhanced data validation for critical operations
+function validateCriticalData(data, schema) {
+  const { error, value } = schema.validate(data, { 
+    allowUnknown: false,
+    stripUnknown: true,
+    abortEarly: false
+  });
+  
+  if (error) {
+    const errors = error.details.map(detail => detail.message);
+    return { valid: false, errors };
+  }
+  
+  return { valid: true, data: value };
+}
+
 function getTokenFromReq(req) {
   const h = req.headers.authorization || "";
   if (h.startsWith("Bearer ")) return h.slice(7);
@@ -377,29 +468,303 @@ app.get("/", (req, res) => {
   res.send("Express App is running");
 });
 
-// --------- UPLOADS ---------
+// --------- ENHANCED FILE UPLOAD SECURITY ---------
+
+// File validation and security functions
+async function validateFileContent(filePath) {
+  try {
+    // Read file header to detect actual file type
+    const fileBuffer = fs.readFileSync(filePath);
+    const detectedType = await fileTypeFromBuffer(fileBuffer);
+    
+    if (!detectedType) {
+      throw new Error("Unable to detect file type");
+    }
+    
+    // Validate against allowed types
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(detectedType.mime)) {
+      throw new Error(`Invalid file type detected: ${detectedType.mime}`);
+    }
+    
+    // Check for suspicious patterns (basic malware detection)
+    const suspiciousPatterns = [
+      /<script/i,
+      /javascript:/i,
+      /vbscript:/i,
+      /onload=/i,
+      /onerror=/i,
+      /eval\(/i,
+      /document\./i,
+      /window\./i
+    ];
+    
+    const fileContent = fileBuffer.toString('utf8', 0, Math.min(1024, fileBuffer.length));
+    for (const pattern of suspiciousPatterns) {
+      if (pattern.test(fileContent)) {
+        throw new Error("Suspicious content detected in file");
+      }
+    }
+    
+    return { valid: true, type: detectedType.mime };
+  } catch (error) {
+    return { valid: false, error: error.message };
+  }
+}
+
+async function processImage(filePath, outputPath) {
+  try {
+    // Resize and optimize image for security
+    await sharp(filePath)
+      .resize(1920, 1080, { 
+        fit: 'inside',
+        withoutEnlargement: true 
+      })
+      .jpeg({ 
+        quality: 85,
+        progressive: true 
+      })
+      .toFile(outputPath);
+    
+    return true;
+  } catch (error) {
+    console.error("Image processing error:", error);
+    return false;
+  }
+}
+
+function generateSecureFilename(originalName) {
+  const ext = path.extname(originalName).toLowerCase();
+  const timestamp = Date.now();
+  const randomBytes = crypto.randomBytes(16).toString('hex');
+  return `secure_${timestamp}_${randomBytes}${ext}`;
+}
+
+// Enhanced storage configuration
 const storage = multer.diskStorage({
-  destination: "./upload/images",
-  filename: (req, file, cb) => cb(null, `${file.fieldname}_${Date.now()}${path.extname(file.originalname)}`)
-});
-const upload = multer({
-  storage,
-  limits: { fileSize: 2 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const allowedMimes = ["image/jpeg", "image/jpg", "image/png"];
-    const allowedExts = [".jpg", ".jpeg", ".png"];
-    if (!allowedMimes.includes(file.mimetype)) return cb(new Error("Invalid file type"), false);
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (!allowedExts.includes(ext)) return cb(new Error("Invalid file extension"), false);
-    cb(null, true);
+  destination: (req, file, cb) => {
+    const uploadDir = "./upload/images";
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const secureName = generateSecureFilename(file.originalname);
+    cb(null, secureName);
   }
 });
-app.use("/images", express.static("upload/images"));
 
-app.post("/upload", requireJwtAuth, hasRole(["admin"]), upload.single("product"), (req, res) => {
-  const proto = req.headers["x-forwarded-proto"] || req.protocol;
-  const host = req.get("host");
-  res.json({ success: 1, image_url: `${proto}://${host}/images/${req.file.filename}` });
+// Enhanced file filter with comprehensive validation
+const upload = multer({
+  storage,
+  limits: { 
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+    files: 1, // Only one file at a time
+    fieldSize: 1024 * 1024 // 1MB field size limit
+  },
+  fileFilter: async (req, file, cb) => {
+    try {
+      // Basic MIME type validation
+      const allowedMimes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+      const allowedExts = [".jpg", ".jpeg", ".png", ".webp"];
+      
+      if (!allowedMimes.includes(file.mimetype)) {
+        return cb(new Error("Invalid file type. Only JPEG, PNG, and WebP images are allowed."), false);
+      }
+      
+      const ext = path.extname(file.originalname).toLowerCase();
+      if (!allowedExts.includes(ext)) {
+        return cb(new Error("Invalid file extension. Only .jpg, .jpeg, .png, and .webp files are allowed."), false);
+      }
+      
+      // Check file name for suspicious characters
+      const suspiciousChars = /[<>:"'|?*\\]/;
+      if (suspiciousChars.test(file.originalname)) {
+        return cb(new Error("Invalid characters in filename"), false);
+      }
+      
+      cb(null, true);
+    } catch (error) {
+      cb(new Error("File validation error"), false);
+    }
+  }
+});
+
+// Secure static file serving with additional headers
+app.use("/images", (req, res, next) => {
+  // Add security headers for static files
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Cache-Control', 'public, max-age=31536000');
+  next();
+}, express.static("upload/images"));
+
+app.post("/upload", requireJwtAuth, hasRole(["admin"]), upload.single("product"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: "No file uploaded" });
+    }
+
+    const filePath = req.file.path;
+    const originalName = req.file.originalname;
+    
+    // Log upload attempt
+    console.log(`File upload attempt by ${req.user.email}: ${originalName} (${req.file.size} bytes)`);
+    
+    // Validate file content
+    const validation = await validateFileContent(filePath);
+    if (!validation.valid) {
+      // Clean up invalid file
+      fs.unlinkSync(filePath);
+      console.log(`File upload rejected: ${validation.error}`);
+      return res.status(400).json({ 
+        success: false, 
+        error: `File validation failed: ${validation.error}` 
+      });
+    }
+    
+    // Process image for security (resize, optimize)
+    const processedPath = filePath.replace(path.extname(filePath), '_processed.jpg');
+    const processed = await processImage(filePath, processedPath);
+    
+    if (!processed) {
+      // Clean up files
+      fs.unlinkSync(filePath);
+      if (fs.existsSync(processedPath)) {
+        fs.unlinkSync(processedPath);
+      }
+      return res.status(500).json({ 
+        success: false, 
+        error: "Image processing failed" 
+      });
+    }
+    
+    // Remove original file and rename processed file
+    fs.unlinkSync(filePath);
+    fs.renameSync(processedPath, filePath);
+    
+    // Generate secure URL
+    const proto = req.headers["x-forwarded-proto"] || req.protocol;
+    const host = req.get("host");
+    const secureUrl = `${proto}://${host}/images/${req.file.filename}`;
+    
+    // Log successful upload
+    console.log(`File upload successful: ${secureUrl}`);
+    
+    res.json({ 
+      success: 1, 
+      image_url: secureUrl,
+      file_size: req.file.size,
+      file_type: validation.type,
+      processed: true
+    });
+    
+  } catch (error) {
+    console.error("Upload error:", error);
+    
+    // Clean up any uploaded files on error
+    if (req.file && req.file.path) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (cleanupError) {
+        console.error("Cleanup error:", cleanupError);
+      }
+    }
+    
+    res.status(500).json({ 
+      success: false, 
+      error: "File upload failed" 
+    });
+  }
+});
+
+// File management and monitoring endpoints
+app.get("/uploaded-files", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
+  try {
+    const uploadDir = "./upload/images";
+    const files = fs.readdirSync(uploadDir);
+    
+    const fileInfo = files.map(filename => {
+      const filePath = path.join(uploadDir, filename);
+      const stats = fs.statSync(filePath);
+      
+      return {
+        filename,
+        size: stats.size,
+        created: stats.birthtime,
+        modified: stats.mtime,
+        url: `/images/${filename}`
+      };
+    });
+    
+    res.json({ 
+      success: true, 
+      files: fileInfo,
+      totalFiles: files.length,
+      totalSize: fileInfo.reduce((sum, file) => sum + file.size, 0)
+    });
+  } catch (error) {
+    console.error("Error fetching uploaded files:", error);
+    res.status(500).json({ success: false, error: "Failed to fetch files" });
+  }
+});
+
+app.delete("/uploaded-files/:filename", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
+  try {
+    const filename = req.params.filename;
+    const filePath = path.join("./upload/images", filename);
+    
+    // Validate filename to prevent directory traversal
+    if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+      return res.status(400).json({ success: false, error: "Invalid filename" });
+    }
+    
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      console.log(`File deleted by ${req.user.email}: ${filename}`);
+      res.json({ success: true, message: "File deleted successfully" });
+    } else {
+      res.status(404).json({ success: false, error: "File not found" });
+    }
+  } catch (error) {
+    console.error("Error deleting file:", error);
+    res.status(500).json({ success: false, error: "Failed to delete file" });
+  }
+});
+
+// File integrity check endpoint
+app.post("/check-file-integrity", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
+  try {
+    const { filename } = req.body;
+    
+    if (!filename) {
+      return res.status(400).json({ success: false, error: "Filename required" });
+    }
+    
+    const filePath = path.join("./upload/images", filename);
+    
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ success: false, error: "File not found" });
+    }
+    
+    // Check file integrity
+    const validation = await validateFileContent(filePath);
+    const stats = fs.statSync(filePath);
+    
+    res.json({
+      success: true,
+      filename,
+      valid: validation.valid,
+      fileType: validation.type,
+      size: stats.size,
+      created: stats.birthtime,
+      modified: stats.mtime
+    });
+  } catch (error) {
+    console.error("Error checking file integrity:", error);
+    res.status(500).json({ success: false, error: "Failed to check file integrity" });
+  }
 });
 
 // --------- EMAIL TRANSPORT ---------
@@ -576,16 +941,27 @@ app.get('/google/callback',
 // Products
 app.post("/addproduct", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
   try {
-    const { error, value } = productSchema.validate(req.body, { allowUnknown: false });
-    if (error) return res.status(400).json({ success: false, error: error.details[0].message });
+    // Enhanced data validation
+    const validation = validateCriticalData(req.body, productSchema);
+    if (!validation.valid) {
+      return res.status(400).json({ 
+        success: false, 
+        error: "Data validation failed", 
+        details: validation.errors 
+      });
+    }
 
     const products = await Product.find({});
     let id = products.length ? products[products.length - 1].id + 1 : 1;
 
-    const product = new Product({ id, ...value });
+    const product = new Product({ id, ...validation.data });
+    
+    // Log database operation
+    logDatabaseOperation('CREATE', 'products', { id, ...validation.data });
+    
     await product.save();
 
-    res.json({ success: true, name: value.name });
+    res.json({ success: true, name: validation.data.name });
   } catch (err) {
     console.error("Error while adding product:", err);
     res.status(500).json({ success: false, error: "Internal server error" });
