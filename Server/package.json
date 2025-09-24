@@ -35,7 +35,8 @@
     "speakeasy": "^2.0.0",
     "uuid": "^9.0.1",
     "file-type": "^16.5.4",
-    "sharp": "^0.33.0"
+    "sharp": "^0.33.0",
+    "winston": "^3.11.0"
   },
   "description": ""
 }

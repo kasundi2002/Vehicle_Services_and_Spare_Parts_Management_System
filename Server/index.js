@@ -24,6 +24,21 @@ const fs = require("fs");
 const { fileTypeFromBuffer } = require("file-type");
 const sharp = require("sharp");
 
+// Import secure logging system
+const { secureLogger, SECURITY_LEVELS, SECURITY_EVENTS } = require('./utils/logger');
+const logMonitor = require('./utils/logMonitor');
+const {
+  securityLoggingMiddleware,
+  authLoggingMiddleware,
+  dataAccessLoggingMiddleware,
+  dataModificationLoggingMiddleware,
+  fileOperationLoggingMiddleware,
+  adminActionLoggingMiddleware,
+  rateLimitLoggingMiddleware,
+  suspiciousActivityMiddleware,
+  errorLoggingMiddleware
+} = require('./middleware/securityLogging');
+
 // Google OpenID Connect & OAuth2
 const { Issuer, generators } = require("openid-client");
 const { OAuth2Client } = require("google-auth-library");
@@ -145,6 +160,16 @@ const authLimiter = rateLimit({
 // Apply rate limiting
 app.use(generalLimiter);
 
+// Apply security logging middleware
+app.use(securityLoggingMiddleware);
+app.use(authLoggingMiddleware);
+app.use(dataAccessLoggingMiddleware);
+app.use(dataModificationLoggingMiddleware);
+app.use(fileOperationLoggingMiddleware);
+app.use(adminActionLoggingMiddleware);
+app.use(rateLimitLoggingMiddleware);
+app.use(suspiciousActivityMiddleware);
+
 // Apply data integrity validation to all routes
 app.use(validateDataIntegrity);
 
@@ -181,8 +206,17 @@ if (isProd) {
 
 // --------- DB ---------
 mongoose.connect(MONGODB_URL)
-  .then(() => console.log("MongoDB Connected"))
-  .catch((err) => console.error("MongoDB Connection Error:", err));
+  .then(() => {
+    console.log("MongoDB Connected");
+    secureLogger.logSecurityEvent(SECURITY_EVENTS.SYSTEM_ERROR, {
+      message: "Database connection established",
+      status: "success"
+    }, SECURITY_LEVELS.INFO);
+  })
+  .catch((err) => {
+    console.error("MongoDB Connection Error:", err);
+    secureLogger.logSystemError(err, { context: "database_connection" }, null, "system");
+  });
 
 // --------- MODELS ---------
 const Product = require("./models/OnlineShopModels/Product");
@@ -193,6 +227,9 @@ const Customers = require("./models/customerModel");
 const Booking = require("./models/BookingModel");
 const Service = require("./models/ServiceModel");
 const Issue = require("./models/issueModel");
+
+// --------- ROUTES ---------
+const logRoutes = require('./routes/logRoutes');
 
 // --------- VALIDATION SCHEMAS ---------
 const userSchema = Joi.object({
@@ -467,6 +504,9 @@ function hasRole(roles = []) {
 app.get("/", (req, res) => {
   res.send("Express App is running");
 });
+
+// --------- LOG MANAGEMENT ROUTES ---------
+app.use('/api/logs', logRoutes);
 
 // --------- ENHANCED FILE UPLOAD SECURITY ---------
 
@@ -1955,5 +1995,25 @@ app.delete("/users/:id", requireJwtAuth, hasRole(["admin"]), async (req, res) =>
   }
 });
 
+// Error handling middleware (must be last)
+app.use(errorLoggingMiddleware);
+
 // --------- START ---------
-app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+  
+  // Start log monitoring
+  logMonitor.startMonitoring();
+  
+  // Log server startup
+  secureLogger.logSecurityEvent(SECURITY_EVENTS.SYSTEM_ERROR, {
+    message: "Server started successfully",
+    port: PORT,
+    environment: NODE_ENV
+  }, SECURITY_LEVELS.INFO);
+  
+  // Schedule log cleanup (daily)
+  setInterval(() => {
+    secureLogger.cleanupOldLogs(30); // Keep logs for 30 days
+  }, 24 * 60 * 60 * 1000); // Run daily
+});
