@@ -15,6 +15,10 @@ const session = require("express-session");
 const Joi = require("joi");
 const nodemailer = require("nodemailer");
 const passport = require("passport");
+const rateLimit = require("express-rate-limit");
+const mongoSanitize = require("mongo-sanitize");
+const speakeasy = require("speakeasy");
+const { v4: uuidv4 } = require("uuid");
 
 // Google OpenID Connect & OAuth2
 const { Issuer, generators } = require("openid-client");
@@ -92,7 +96,50 @@ app.use(cors({
 }));
 
 app.use(cookieParser());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' })); // Limit JSON payload size
+
+// --------- INPUT SANITIZATION ---------
+// Sanitize all inputs to prevent NoSQL injection
+app.use((req, res, next) => {
+  if (req.body) {
+    req.body = mongoSanitize(req.body);
+  }
+  if (req.query) {
+    req.query = mongoSanitize(req.query);
+  }
+  if (req.params) {
+    req.params = mongoSanitize(req.params);
+  }
+  next();
+});
+
+// --------- RATE LIMITING ---------
+// General rate limiting
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: {
+    error: "Too many requests from this IP, please try again later.",
+    retryAfter: "15 minutes"
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Strict rate limiting for authentication endpoints
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // Limit each IP to 5 login attempts per windowMs
+  message: {
+    error: "Too many authentication attempts, please try again later.",
+    retryAfter: "15 minutes"
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Apply rate limiting
+app.use(generalLimiter);
 
 // --------- SESSIONS (for OIDC/OAuth) ---------
 // In prod (HTTPS), SameSite=None + Secure=true. In dev, we still use None to allow cross-origin fetch with credentials.
@@ -144,7 +191,14 @@ const Issue = require("./models/issueModel");
 const userSchema = Joi.object({
   name: Joi.string().min(2).max(50).trim().required(),
   email: Joi.string().email().lowercase().trim().required(),
-  password: Joi.string().min(8).max(128).required()
+  password: Joi.string()
+    .min(8)
+    .max(128)
+    .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/)
+    .required()
+    .messages({
+      'string.pattern.base': 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character'
+    })
 });
 
 const loginSchema = Joi.object({
@@ -153,66 +207,71 @@ const loginSchema = Joi.object({
 });
 
 const productSchema = Joi.object({
-  name: Joi.string().min(2).max(100).trim().required(),
-  category: Joi.string().min(2).max(50).trim().required(),
-  brand: Joi.string().min(2).max(50).trim().required(),
+  name: Joi.string().min(2).max(100).trim().pattern(/^[a-zA-Z0-9\s\-_.,()]+$/).required(),
+  category: Joi.string().min(2).max(50).trim().pattern(/^[a-zA-Z0-9\s\-_]+$/).required(),
+  brand: Joi.string().min(2).max(50).trim().pattern(/^[a-zA-Z0-9\s\-_]+$/).required(),
   image: Joi.string().uri().required(),
-  new_price: Joi.number().positive().required(),
-  old_price: Joi.number().positive().required(),
-  description: Joi.string().max(500).trim().required(),
-  quantity: Joi.number().integer().min(0).required()
+  new_price: Joi.number().positive().max(999999.99).precision(2).required(),
+  old_price: Joi.number().positive().max(999999.99).precision(2).required(),
+  description: Joi.string().max(500).trim().pattern(/^[a-zA-Z0-9\s\-_.,()!?@#$%&*+=<>:"'`~[\]{}|\\/]+$/).required(),
+  quantity: Joi.number().integer().min(0).max(999999).required()
 });
 
 const orderSchema = Joi.object({
-  fullName: Joi.string().min(2).max(100).trim().required(),
+  fullName: Joi.string().min(2).max(100).trim().pattern(/^[a-zA-Z\s]+$/).required(),
   email: Joi.string().email().lowercase().trim().required(),
-  address: Joi.string().min(10).max(200).trim().required(),
+  address: Joi.string().min(10).max(200).trim().pattern(/^[a-zA-Z0-9\s\-_.,()#\/]+$/).required(),
   contact: Joi.string().pattern(/^[0-9+\-\s()]+$/).min(10).max(15).required(),
   paymentMethod: Joi.string().valid("cash", "card", "online").required(),
-  items: Joi.array().items(Joi.object()).min(1).required(),
-  totalAmount: Joi.number().positive().required()
+  items: Joi.array().items(Joi.object({
+    id: Joi.number().integer().positive().required(),
+    name: Joi.string().required(),
+    price: Joi.number().positive().required(),
+    quantity: Joi.number().integer().positive().required()
+  })).min(1).max(50).required(),
+  totalAmount: Joi.number().positive().max(999999.99).precision(2).required()
 });
 
 const bookingSchema = Joi.object({
-  ownerName: Joi.string().min(2).max(100).trim().required(),
+  ownerName: Joi.string().min(2).max(100).trim().pattern(/^[a-zA-Z\s]+$/).required(),
   email: Joi.string().email().lowercase().trim().required(),
   phone: Joi.string().pattern(/^[0-9+\-\s()]+$/).min(10).max(15).required(),
-  specialNotes: Joi.string().max(500).trim().allow(""),
-  location: Joi.string().min(5).max(100).trim().required(),
-  serviceType: Joi.string().min(2).max(50).trim().required(),
-  vehicleModel: Joi.string().min(2).max(50).trim().required(),
-  vehicleNumber: Joi.string().min(2).max(20).trim().required(),
+  specialNotes: Joi.string().max(500).trim().pattern(/^[a-zA-Z0-9\s\-_.,()!?@#$%&*+=<>:"'`~[\]{}|\\/]*$/).allow(""),
+  location: Joi.string().min(5).max(100).trim().pattern(/^[a-zA-Z0-9\s\-_.,()#\/]+$/).required(),
+  serviceType: Joi.string().min(2).max(50).trim().pattern(/^[a-zA-Z0-9\s\-_]+$/).required(),
+  vehicleModel: Joi.string().min(2).max(50).trim().pattern(/^[a-zA-Z0-9\s\-_]+$/).required(),
+  vehicleNumber: Joi.string().min(2).max(20).trim().pattern(/^[a-zA-Z0-9\s\-_]+$/).required(),
   date: Joi.date().min("now").required(),
   time: Joi.string().pattern(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/).required()
 });
 
 const serviceSchema = Joi.object({
-  serviceTitle: Joi.string().min(2).max(100).trim().required(),
-  details: Joi.string().max(500).trim().allow(""),
-  estimatedHour: Joi.string().min(1).max(20).trim().required(),
+  serviceTitle: Joi.string().min(2).max(100).trim().pattern(/^[a-zA-Z0-9\s\-_.,()]+$/).required(),
+  details: Joi.string().max(500).trim().pattern(/^[a-zA-Z0-9\s\-_.,()!?@#$%&*+=<>:"'`~[\]{}|\\/]*$/).allow(""),
+  estimatedHour: Joi.string().min(1).max(20).trim().pattern(/^[0-9]+(\.[0-9]+)?$/).required(),
   image: Joi.string().uri().required()
 });
 
 const customerSchema = Joi.object({
-  customerID: Joi.string().min(2).max(20).trim().required(),
-  name: Joi.string().min(2).max(100).trim().required(),
+  customerID: Joi.string().min(2).max(20).trim().pattern(/^[a-zA-Z0-9\-_]+$/).required(),
+  name: Joi.string().min(2).max(100).trim().pattern(/^[a-zA-Z\s]+$/).required(),
   NIC: Joi.string().pattern(/^[0-9]{9}[vVxX]|[0-9]{12}$/).required(),
-  address: Joi.string().min(10).max(200).trim().required(),
+  address: Joi.string().min(10).max(200).trim().pattern(/^[a-zA-Z0-9\s\-_.,()#\/]+$/).required(),
   contactno: Joi.string().pattern(/^[0-9+\-\s()]+$/).min(10).max(15).required(),
   email: Joi.string().email().lowercase().trim().required(),
-  vType: Joi.string().min(2).max(20).trim().required(),
-  vName: Joi.string().min(2).max(50).trim().required(),
-  Regno: Joi.string().min(2).max(20).trim().required(),
-  vColor: Joi.string().min(2).max(20).trim().required(),
-  vFuel: Joi.string().min(2).max(20).trim().required()
+  vType: Joi.string().min(2).max(20).trim().pattern(/^[a-zA-Z0-9\s\-_]+$/).required(),
+  vName: Joi.string().min(2).max(50).trim().pattern(/^[a-zA-Z0-9\s\-_]+$/).required(),
+  Regno: Joi.string().min(2).max(20).trim().pattern(/^[a-zA-Z0-9\s\-_]+$/).required(),
+  vColor: Joi.string().min(2).max(20).trim().pattern(/^[a-zA-Z\s\-_]+$/).required(),
+  vFuel: Joi.string().min(2).max(20).trim().pattern(/^[a-zA-Z\s\-_]+$/).required()
 });
 
 const issueSchema = Joi.object({
-  cid: Joi.string().min(2).max(20).trim().required(),
-  Cname: Joi.string().min(2).max(100).trim().required(),
+  cid: Joi.string().min(2).max(20).trim().pattern(/^[a-zA-Z0-9\-_]+$/).required(),
+  Cname: Joi.string().min(2).max(100).trim().pattern(/^[a-zA-Z\s]+$/).required(),
   Cnic: Joi.string().pattern(/^[0-9]{9}[vVxX]|[0-9]{12}$/).required(),
   Ccontact: Joi.string().pattern(/^[0-9+\-\s()]+$/).min(10).max(15).required(),
-  Clocation: Joi.string().min(5).max(100).trim().required(),
+  Clocation: Joi.string().min(5).max(100).trim().pattern(/^[a-zA-Z0-9\s\-_.,()#\/]+$/).required(),
   Cstatus: Joi.string().valid("pending", "in_progress", "resolved", "closed").required()
 });
 
@@ -221,6 +280,43 @@ function pick(obj, allowed = []) {
   const out = {};
   allowed.forEach(k => { if (obj[k] !== undefined) out[k] = obj[k]; });
   return out;
+}
+
+// Safe MongoDB query helper to prevent injection
+function sanitizeQuery(query) {
+  if (typeof query === 'object' && query !== null) {
+    const sanitized = {};
+    for (const [key, value] of Object.entries(query)) {
+      // Sanitize keys
+      const sanitizedKey = mongoSanitize(key);
+      if (sanitizedKey && typeof sanitizedKey === 'string') {
+        // Sanitize values
+        if (typeof value === 'object' && value !== null) {
+          sanitized[sanitizedKey] = sanitizeQuery(value);
+        } else {
+          sanitized[sanitizedKey] = mongoSanitize(value);
+        }
+      }
+    }
+    return sanitized;
+  }
+  return mongoSanitize(query);
+}
+
+// Parameter validation middleware
+function validateParams(schema) {
+  return (req, res, next) => {
+    const { error, value } = schema.validate(req.params, { allowUnknown: false });
+    if (error) {
+      return res.status(400).json({ 
+        success: false, 
+        error: "Invalid parameters",
+        details: error.details[0].message 
+      });
+    }
+    req.params = value;
+    next();
+  };
 }
 
 function getTokenFromReq(req) {
@@ -233,9 +329,21 @@ function requireJwtAuth(req, res, next) {
   try {
     const token = getTokenFromReq(req);
     if (!token) return res.status(401).json({ message: "Auth required" });
-    const payload = jwt.verify(token, JWT_SECRET);
+    
+    // Verify token with additional security checks
+    const payload = jwt.verify(token, JWT_SECRET, {
+      algorithms: ['HS256'], // Only allow HS256 algorithm
+      clockTolerance: 30 // Allow 30 seconds clock tolerance
+    });
+    
     const u = payload?.user || payload?.User || payload?.Admin || payload?.admin || payload;
     if (!u) return res.status(401).json({ message: "Invalid token" });
+    
+    // Check token expiration
+    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+      return res.status(401).json({ message: "Token expired" });
+    }
+    
     req.user = {
       id: u._id || u.id,
       email: u.email,
@@ -244,6 +352,11 @@ function requireJwtAuth(req, res, next) {
     };
     next();
   } catch (e) {
+    if (e.name === 'TokenExpiredError') {
+      return res.status(401).json({ message: "Token expired" });
+    } else if (e.name === 'JsonWebTokenError') {
+      return res.status(401).json({ message: "Invalid token" });
+    }
     return res.status(401).json({ message: "Invalid/expired token" });
   }
 }
@@ -282,7 +395,7 @@ const upload = multer({
 });
 app.use("/images", express.static("upload/images"));
 
-app.post("/upload", upload.single("product"), (req, res) => {
+app.post("/upload", requireJwtAuth, hasRole(["admin"]), upload.single("product"), (req, res) => {
   const proto = req.headers["x-forwarded-proto"] || req.protocol;
   const host = req.get("host");
   res.json({ success: 1, image_url: `${proto}://${host}/images/${req.file.filename}` });
@@ -460,7 +573,7 @@ app.get('/google/callback',
 // --------- BUSINESS ROUTES (JWT protected as in your app) ---------
 
 // Products
-app.post("/addproduct", async (req, res) => {
+app.post("/addproduct", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
   try {
     const { error, value } = productSchema.validate(req.body, { allowUnknown: false });
     if (error) return res.status(400).json({ success: false, error: error.details[0].message });
@@ -478,7 +591,7 @@ app.post("/addproduct", async (req, res) => {
   }
 });
 
-app.post("/removeproduct", async (req, res) => {
+app.post("/removeproduct", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
   try {
     const { error, value } = Joi.object({
       id: Joi.number().integer().positive().required(),
@@ -494,12 +607,12 @@ app.post("/removeproduct", async (req, res) => {
   }
 });
 
-app.get("/allproducts", async (req, res) => {
+app.get("/allproducts", requireJwtAuth, async (req, res) => {
   const products = await Product.find({});
   res.send(products);
 });
 
-app.put("/updateproduct/:id", async (req, res) => {
+app.put("/updateproduct/:id", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
   try {
     const { error: idError, value: productId } = Joi.number().integer().positive().required().validate(req.params.id);
     if (idError) return res.status(400).json({ success: false, error: "Invalid product ID" });
@@ -517,9 +630,12 @@ app.put("/updateproduct/:id", async (req, res) => {
   }
 });
 
-app.get("/product/:id", async (req, res) => {
+app.get("/product/:id", requireJwtAuth, validateParams(Joi.object({
+  id: Joi.number().integer().positive().required()
+})), async (req, res) => {
   try {
-    const product = await Product.findOne({ id: req.params.id });
+    const sanitizedQuery = sanitizeQuery({ id: req.params.id });
+    const product = await Product.findOne(sanitizedQuery);
     if (!product) return res.status(404).json({ success: false, error: "Product not found" });
     res.json({ success: true, product });
   } catch (err) {
@@ -541,7 +657,7 @@ app.get("/lowStockProducts", requireJwtAuth, hasRole(["admin"]), async (req, res
 });
 
 // Auth (JWT for your classic login/signup flows)
-app.post("/signup", async (req, res) => {
+app.post("/signup", authLimiter, async (req, res) => {
   try {
     const { error, value } = userSchema.validate(req.body, { allowUnknown: false });
     if (error) return res.status(400).json({ success: false, errors: error.details[0].message });
@@ -561,15 +677,60 @@ app.post("/signup", async (req, res) => {
   }
 });
 
-app.post("/login", async (req, res) => {
+app.post("/login", authLimiter, async (req, res) => {
   try {
     const { error, value } = loginSchema.validate(req.body, { allowUnknown: false });
     if (error) return res.status(400).json({ success: false, errors: error.details[0].message });
 
     const user = await Users.findOne({ email: value.email });
-    if (!user || value.password !== user.password) return res.json({ success: false, errors: "Invalid credentials" });
+    if (!user) {
+      // Log failed login attempt
+      console.log(`Failed login attempt for email: ${value.email} - User not found`);
+      return res.json({ success: false, errors: "Invalid credentials" });
+    }
+
+    // Check if account is locked
+    if (user.isLocked) {
+      console.log(`Login attempt for locked account: ${value.email}`);
+      return res.status(423).json({ 
+        success: false, 
+        errors: "Account is temporarily locked due to multiple failed login attempts. Please try again later." 
+      });
+    }
+
+    // Use bcrypt to compare password
+    const isPasswordValid = await user.comparePassword(value.password);
+    if (!isPasswordValid) {
+      // Increment login attempts
+      await user.incLoginAttempts();
+      console.log(`Failed login attempt for email: ${value.email} - Invalid password`);
+      return res.json({ success: false, errors: "Invalid credentials" });
+    }
+
+    // Reset login attempts on successful login
+    await user.resetLoginAttempts();
+
+    // Check if MFA is enabled
+    if (user.mfaEnabled) {
+      // Return a temporary token for MFA verification
+      const tempToken = jwt.sign({ 
+        user: { id: user.id, email: user.email, name: user.name, role: "user" },
+        mfaRequired: true 
+      }, JWT_SECRET, { expiresIn: "5m" });
+      
+      return res.json({ 
+        success: true, 
+        mfaRequired: true, 
+        tempToken,
+        message: "MFA verification required" 
+      });
+    }
 
     const token = jwt.sign({ user: { id: user.id, email: user.email, name: user.name, role: "user" } }, JWT_SECRET, { expiresIn: "8h" });
+    
+    // Log successful login
+    console.log(`Successful login for user: ${user.email}`);
+    
     res.json({ success: true, token });
   } catch (err) {
     console.error("Error during login:", err);
@@ -577,18 +738,330 @@ app.post("/login", async (req, res) => {
   }
 });
 
-app.post("/adminlogin", async (req, res) => {
+app.post("/adminlogin", authLimiter, async (req, res) => {
   try {
     const { error, value } = loginSchema.validate(req.body, { allowUnknown: false });
     if (error) return res.status(400).json({ success: false, errors: error.details[0].message });
 
     const admin = await Admins.findOne({ email: value.email });
-    if (!admin || value.password !== admin.password) return res.json({ success: false, errors: "Invalid credentials" });
+    if (!admin) {
+      // Log failed admin login attempt
+      console.log(`Failed admin login attempt for email: ${value.email} - Admin not found`);
+      return res.json({ success: false, errors: "Invalid credentials" });
+    }
+
+    // Check if account is locked
+    if (admin.isLocked) {
+      console.log(`Admin login attempt for locked account: ${value.email}`);
+      return res.status(423).json({ 
+        success: false, 
+        errors: "Account is temporarily locked due to multiple failed login attempts. Please try again later." 
+      });
+    }
+
+    // Use bcrypt to compare password
+    const isPasswordValid = await admin.comparePassword(value.password);
+    if (!isPasswordValid) {
+      // Increment login attempts
+      await admin.incLoginAttempts();
+      console.log(`Failed admin login attempt for email: ${value.email} - Invalid password`);
+      return res.json({ success: false, errors: "Invalid credentials" });
+    }
+
+    // Reset login attempts on successful login
+    await admin.resetLoginAttempts();
+
+    // Check if MFA is enabled
+    if (admin.mfaEnabled) {
+      // Return a temporary token for MFA verification
+      const tempToken = jwt.sign({ 
+        user: { id: admin._id, email: admin.email, name: admin.name, role: "admin" },
+        mfaRequired: true 
+      }, JWT_SECRET, { expiresIn: "5m" });
+      
+      return res.json({ 
+        success: true, 
+        mfaRequired: true, 
+        tempToken,
+        message: "MFA verification required" 
+      });
+    }
 
     const token = jwt.sign({ user: { id: admin._id, email: admin.email, name: admin.name, role: "admin" } }, JWT_SECRET, { expiresIn: "8h" });
+    
+    // Log successful admin login
+    console.log(`Successful admin login for: ${admin.email}`);
+    
     res.json({ success: true, token });
   } catch (err) {
     console.error("Error during admin login:", err);
+    res.status(500).json({ success: false, errors: "Internal server error" });
+  }
+});
+
+// MFA verification endpoint
+app.post("/verify-mfa", authLimiter, async (req, res) => {
+  try {
+    const { tempToken, mfaToken } = req.body;
+    
+    if (!tempToken || !mfaToken) {
+      return res.status(400).json({ success: false, errors: "Token and MFA code required" });
+    }
+
+    // Verify temp token
+    const payload = jwt.verify(tempToken, JWT_SECRET);
+    if (!payload.mfaRequired) {
+      return res.status(400).json({ success: false, errors: "Invalid token" });
+    }
+
+    const user = await Users.findOne({ email: payload.user.email });
+    if (!user) {
+      const admin = await Admins.findOne({ email: payload.user.email });
+      if (!admin) {
+        return res.status(404).json({ success: false, errors: "User not found" });
+      }
+      
+      // Verify MFA for admin
+      const isValidMfa = admin.verifyMfaToken(mfaToken);
+      if (!isValidMfa) {
+        return res.status(400).json({ success: false, errors: "Invalid MFA code" });
+      }
+      
+      const token = jwt.sign({ user: payload.user }, JWT_SECRET, { expiresIn: "8h" });
+      return res.json({ success: true, token });
+    }
+
+    // Verify MFA for user
+    const isValidMfa = user.verifyMfaToken(mfaToken);
+    if (!isValidMfa) {
+      return res.status(400).json({ success: false, errors: "Invalid MFA code" });
+    }
+
+    const token = jwt.sign({ user: payload.user }, JWT_SECRET, { expiresIn: "8h" });
+    res.json({ success: true, token });
+  } catch (err) {
+    console.error("Error during MFA verification:", err);
+    res.status(500).json({ success: false, errors: "Internal server error" });
+  }
+});
+
+// Password reset request
+app.post("/forgot-password", authLimiter, async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({ success: false, errors: "Email required" });
+    }
+
+    const user = await Users.findOne({ email });
+    if (!user) {
+      // Don't reveal if user exists
+      return res.json({ success: true, message: "If the email exists, a reset link has been sent" });
+    }
+
+    const resetToken = user.generatePasswordResetToken();
+    await user.save();
+
+    // Send reset email
+    const resetUrl = `${process.env.FRONTEND_ORIGIN || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
+    const mailOptions = {
+      from: EMAIL_ADD,
+      to: email,
+      subject: "Password Reset Request",
+      html: `
+        <h2>Password Reset Request</h2>
+        <p>You requested a password reset for your account.</p>
+        <p>Click the link below to reset your password (expires in 10 minutes):</p>
+        <a href="${resetUrl}">Reset Password</a>
+        <p>If you didn't request this, please ignore this email.</p>
+      `
+    };
+
+    await transporter.sendMail(mailOptions);
+    res.json({ success: true, message: "If the email exists, a reset link has been sent" });
+  } catch (err) {
+    console.error("Error during password reset request:", err);
+    res.status(500).json({ success: false, errors: "Internal server error" });
+  }
+});
+
+// Password reset
+app.post("/reset-password", authLimiter, async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+    
+    if (!token || !newPassword) {
+      return res.status(400).json({ success: false, errors: "Token and new password required" });
+    }
+
+    const user = await Users.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({ success: false, errors: "Invalid or expired reset token" });
+    }
+
+    // Validate new password
+    const { error } = Joi.string()
+      .min(8)
+      .max(128)
+      .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/)
+      .required()
+      .validate(newPassword);
+
+    if (error) {
+      return res.status(400).json({ 
+        success: false, 
+        errors: "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character" 
+      });
+    }
+
+    user.password = newPassword;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
+
+    res.json({ success: true, message: "Password reset successfully" });
+  } catch (err) {
+    console.error("Error during password reset:", err);
+    res.status(500).json({ success: false, errors: "Internal server error" });
+  }
+});
+
+// MFA setup - generate secret
+app.post("/setup-mfa", requireJwtAuth, async (req, res) => {
+  try {
+    const user = await Users.findById(req.user.id);
+    if (!user) {
+      const admin = await Admins.findById(req.user.id);
+      if (!admin) {
+        return res.status(404).json({ success: false, errors: "User not found" });
+      }
+      
+      const secret = admin.generateMfaSecret();
+      await admin.save();
+      
+      return res.json({ 
+        success: true, 
+        secret: secret.base32,
+        qrCodeUrl: secret.otpauth_url 
+      });
+    }
+    
+    const secret = user.generateMfaSecret();
+    await user.save();
+    
+    res.json({ 
+      success: true, 
+      secret: secret.base32,
+      qrCodeUrl: secret.otpauth_url 
+    });
+  } catch (err) {
+    console.error("Error setting up MFA:", err);
+    res.status(500).json({ success: false, errors: "Internal server error" });
+  }
+});
+
+// MFA setup - verify and enable
+app.post("/enable-mfa", requireJwtAuth, async (req, res) => {
+  try {
+    const { token } = req.body;
+    
+    if (!token) {
+      return res.status(400).json({ success: false, errors: "MFA token required" });
+    }
+
+    const user = await Users.findById(req.user.id);
+    if (!user) {
+      const admin = await Admins.findById(req.user.id);
+      if (!admin) {
+        return res.status(404).json({ success: false, errors: "User not found" });
+      }
+      
+      const isValid = admin.verifyMfaToken(token);
+      if (!isValid) {
+        return res.status(400).json({ success: false, errors: "Invalid MFA token" });
+      }
+      
+      admin.mfaEnabled = true;
+      await admin.save();
+      
+      return res.json({ success: true, message: "MFA enabled successfully" });
+    }
+    
+    const isValid = user.verifyMfaToken(token);
+    if (!isValid) {
+      return res.status(400).json({ success: false, errors: "Invalid MFA token" });
+    }
+    
+    user.mfaEnabled = true;
+    await user.save();
+    
+    res.json({ success: true, message: "MFA enabled successfully" });
+  } catch (err) {
+    console.error("Error enabling MFA:", err);
+    res.status(500).json({ success: false, errors: "Internal server error" });
+  }
+});
+
+// Session timeout management
+app.get("/session-status", requireJwtAuth, async (req, res) => {
+  try {
+    const token = getTokenFromReq(req);
+    const payload = jwt.verify(token, JWT_SECRET);
+    
+    const timeLeft = payload.exp - Math.floor(Date.now() / 1000);
+    
+    res.json({ 
+      success: true, 
+      timeLeft,
+      expiresAt: new Date(payload.exp * 1000).toISOString()
+    });
+  } catch (err) {
+    res.status(401).json({ success: false, errors: "Invalid session" });
+  }
+});
+
+// Refresh token endpoint
+app.post("/refresh-token", requireJwtAuth, async (req, res) => {
+  try {
+    const user = await Users.findById(req.user.id);
+    if (!user) {
+      const admin = await Admins.findById(req.user.id);
+      if (!admin) {
+        return res.status(404).json({ success: false, errors: "User not found" });
+      }
+      
+      const token = jwt.sign({ 
+        user: { id: admin._id, email: admin.email, name: admin.name, role: "admin" } 
+      }, JWT_SECRET, { expiresIn: "8h" });
+      
+      return res.json({ success: true, token });
+    }
+    
+    const token = jwt.sign({ 
+      user: { id: user.id, email: user.email, name: user.name, role: "user" } 
+    }, JWT_SECRET, { expiresIn: "8h" });
+    
+    res.json({ success: true, token });
+  } catch (err) {
+    console.error("Error refreshing token:", err);
+    res.status(500).json({ success: false, errors: "Internal server error" });
+  }
+});
+
+// Logout endpoint
+app.post("/logout", requireJwtAuth, async (req, res) => {
+  try {
+    // In a production environment, you would maintain a blacklist of tokens
+    // For now, we'll just return success as JWT tokens are stateless
+    console.log(`User logout: ${req.user.email}`);
+    res.json({ success: true, message: "Logged out successfully" });
+  } catch (err) {
+    console.error("Error during logout:", err);
     res.status(500).json({ success: false, errors: "Internal server error" });
   }
 });
@@ -695,9 +1168,12 @@ app.post("/checkout", requireJwtAuth, async (req, res) => {
   }
 });
 
-app.get("/product/quantity/:id", async (req, res) => {
+app.get("/product/quantity/:id", requireJwtAuth, validateParams(Joi.object({
+  id: Joi.number().integer().positive().required()
+})), async (req, res) => {
   try {
-    const product = await Product.findOne({ id: req.params.id });
+    const sanitizedQuery = sanitizeQuery({ id: req.params.id });
+    const product = await Product.findOne(sanitizedQuery);
     if (!product) return res.status(404).json({ success: false, error: "Product not found" });
     res.json({ success: true, quantity: product.quantity });
   } catch (err) {
@@ -728,7 +1204,7 @@ app.delete("/order/:id", requireJwtAuth, hasRole(["admin"]), async (req, res) =>
   }
 });
 
-app.put("/order/:id", async (req, res) => {
+app.put("/order/:id", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
   try {
     const orderId = req.params.id;
     const newStatus = req.body.status;
@@ -836,7 +1312,7 @@ app.post("/addbooking", requireJwtAuth, async (req, res) => {
   }
 });
 
-app.put("/updateBookingStatus2/:id", async (req, res) => {
+app.put("/updateBookingStatus2/:id", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
   try {
     const { error, value } = Joi.object({
       status: Joi.string().valid("pending","accepted","in_progress","completed","cancelled").required()
@@ -910,7 +1386,7 @@ app.post("/addservice", requireJwtAuth, hasRole(["admin"]), upload.single("image
   }
 });
 
-app.get("/allServices", async (req, res) => {
+app.get("/allServices", requireJwtAuth, async (req, res) => {
   try {
     const data = await Service.find();
     res.json(data);
@@ -1043,9 +1519,12 @@ app.get("/customers/", requireJwtAuth, hasRole(["admin"]), async (req, res) => {
   }
 });
 
-app.get("/customers/:id", requireJwtAuth, async (req, res) => {
+app.get("/customers/:id", requireJwtAuth, hasRole(["admin"]), validateParams(Joi.object({
+  id: Joi.string().pattern(/^[0-9a-fA-F]{24}$/).required()
+})), async (req, res) => {
   try {
-    const customer = await Customers.findById(req.params.id);
+    const sanitizedId = mongoSanitize(req.params.id);
+    const customer = await Customers.findById(sanitizedId);
     if (!customer) return res.status(404).json({ msg: "Customer not found" });
     res.json(customer);
   } catch {
